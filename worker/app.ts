@@ -2,6 +2,7 @@ import { Hono } from 'hono'
 import { bodyLimit } from 'hono/body-limit'
 import { ApiError } from './lib/errors'
 import { rateLimit } from './lib/ratelimit'
+import { sameOrigin, securityHeaders } from './lib/security'
 import { holler, MAX_SIGNAL_BYTES } from './holler/routes'
 import { meetings } from './meetings/routes'
 
@@ -9,6 +10,9 @@ export type AppEnv = { Bindings: Env }
 
 export const app = new Hono<AppEnv>()
 
+// First, so that every answer carries the headers: errors and rate limits too.
+app.use('/api/*', securityHeaders)
+app.use('/api/*', sameOrigin)
 app.use('/api/*', rateLimit('api'))
 
 /**

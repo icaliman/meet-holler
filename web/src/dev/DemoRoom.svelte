@@ -1,6 +1,6 @@
 <script lang="ts">
     /**
-     * Dev only: /dev/room?people=3&share=1&waiting=1&off=2&poor=3&away=1&guest=1
+     * Dev only: /dev/room?people=3&share=1&marks=1&waiting=1&off=2&poor=3&away=1&guest=1
      * shows the room with made-up people, for looking at layouts and states.
      */
     import { onDestroy } from 'svelte'
@@ -16,6 +16,7 @@
         cameraOff: list('off'),
         poor: list('poor'),
         away: list('away'),
+        marks: q.get('marks') === '1',
     })
     if (q.get('guest') === '1') room.isHost = false
     if (q.get('state')) room.state = q.get('state') as typeof room.state

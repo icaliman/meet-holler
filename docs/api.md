@@ -46,6 +46,10 @@ The Worker's JSON API, everything under `/api/*`. [ARCHITECTURE.md](ARCHITECTURE
 
 The host is whoever joins with the meeting's `hostKey`. Host routes accept either the host's token (`Authorization: Bearer`) or the key itself (`X-Host-Key: <hostKey>`), so host controls also work from a page that has not joined.
 
+**Same origin only.** The API is for the app served from the same origin. It sends no CORS headers, so a page on another origin cannot read an answer, and it refuses (`403 forbidden`) any request that changes something (everything but `GET`) whose `Origin` is another origin or whose `Sec-Fetch-Site` is `cross-site`. A client that sends neither header (a script, `curl`) is not affected. JSON bodies must be sent as `Content-Type: application/json` (`422 invalid` otherwise). There are no cookies.
+
+**Headers on every answer:** `Cache-Control: no-store`, `X-Content-Type-Options: nosniff`, `Referrer-Policy: no-referrer`, `X-Frame-Options: DENY`, `Cross-Origin-Resource-Policy: same-origin` and a `Content-Security-Policy` that allows nothing (`default-src 'none'; frame-ancestors 'none'`). The pages get theirs (the app's Content-Security-Policy, `Permissions-Policy` for the camera, the microphone and screen capture) from `web/public/_headers`.
+
 **Rate limits** (per IP address, per Worker instance, so they are a brake, not a wall): creating meetings 20 per 10 minutes, joining 30 per minute, everything else 600 per minute. Wrong passcodes are counted per meeting in D1: after 10 in 15 minutes the meeting answers `rate_limited` to every passcode until the window passes.
 
 ## Meetings
@@ -246,6 +250,7 @@ The `call` object is Holler's (holler-js README, "The signaling interface"), wit
 | `seat` | join order (admission order for the waiting room), starting at 0; only the order matters: between two people the lower seat makes the offer |
 | `joined` | whether I answered and am in the call |
 | `peers` | everyone else in the call (`ringing` = admitted, still on the camera prompt; `joined`; `on_hold`), plus people who left in the last minute (`left`, `declined`, `missed`, `dropped`) so clients see them go |
+| `peers[].role` | `host` or `guest`: who joined with the meeting's `hostKey`. An addition to Holler's peer, set by the Worker from the participant's record and never from anything a client sends; the app uses it to decide whose word counts as the host's between browsers (clearing everyone's marks, [annotations.md](annotations.md)). Optional for clients: without it nobody is taken for the host |
 | `answered_at` | when the call first had two people |
 
 Why `ringing` while alone: Holler ends a call that drops below two people, and a client alone in an `active` call would decide its peer is lost and hang up after 15 seconds. A meeting outlives its people, so a lone participant sees the call as `ringing` (state `calling` or `connecting`), which keeps the client waiting quietly; the app shows "Waiting for others" from an empty `peers` list. See the known issue under [Holler and a lone participant](#holler-and-a-lone-participant).
@@ -373,6 +378,7 @@ Relative to [ARCHITECTURE.md](ARCHITECTURE.md):
 - Host routes also accept `X-Host-Key` instead of the host's token.
 - Error bodies also carry `message` and `reason` at the top level (for `HttpSignaling`).
 - The Holler poll also returns `meeting` (with the waiting list for the host).
+- Each entry of `peers` also carries `role` (`host` or `guest`).
 - The call does not end when people leave, only when the host ends it (or the cleanup does); the contract said "or the last person leaves". An empty meeting stays joinable until the daily cleanup ends it after a day without anyone in it.
 - `seat` is join order but keeps counting (0, 1, 2, … including people who left), rather than 0..3.
 

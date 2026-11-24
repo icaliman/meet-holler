@@ -33,6 +33,11 @@ export const icons = {
     hand: '<path d="M8 13V5.5a1.5 1.5 0 0 1 3 0V11M11 10.5v-6a1.5 1.5 0 0 1 3 0v6M14 10.5v-5a1.5 1.5 0 0 1 3 0V13M8 13v-1.5a1.5 1.5 0 0 0-3 0V14a7 7 0 0 0 7 7h1a6 6 0 0 0 6-6v-2.5a1.5 1.5 0 0 0-3 0"/>',
     refresh: '<path d="M20 11.5A8 8 0 0 0 5.6 7M4 4v3.5h3.5M4 12.5A8 8 0 0 0 18.4 17M20 20v-3.5h-3.5"/>',
     speaker: '<path d="M4 9.5h3.5L12 5.5v13l-4.5-4H4z"/><path d="M15.5 9a4 4 0 0 1 0 6M18 6.5a7.5 7.5 0 0 1 0 11"/>',
+    pointer: '<circle cx="12" cy="12" r="3.2" fill="currentColor" stroke="none"/><circle cx="12" cy="12" r="7.5" opacity=".45"/>',
+    pen: '<path d="M4 20l1.2-4.6L15.6 5a2.1 2.1 0 0 1 3 0l.4.4a2.1 2.1 0 0 1 0 3L8.6 18.8z"/><path d="M13.5 7l3.5 3.5"/>',
+    arrowDraw: '<path d="M5 19L18 6"/><path d="M10 6h8v8"/>',
+    marker: '<path d="M9 14.5l-3 3V20h4l3-3"/><path d="M9 14.5l7.6-9.3a1.8 1.8 0 0 1 2.6-.2l.8.8a1.8 1.8 0 0 1-.2 2.6L13 17z"/><path d="M14 20.5h6" opacity=".55"/>',
+    eraser: '<path d="M8.5 20.5h11"/><path d="M5.3 15.3l9-9a2 2 0 0 1 2.8 0l2.6 2.6a2 2 0 0 1 0 2.8l-8.2 8.2a2 2 0 0 1-1.4.6H8.6a2 2 0 0 1-1.4-.6l-1.9-1.9a2 2 0 0 1 0-2.7z"/><path d="M9.5 11l5 5"/>',
 } as const
 
 export type IconName = keyof typeof icons

@@ -65,13 +65,34 @@ describe('the call of a meeting', () => {
         const first = await answer(code, ion!)
         expect(first.status).toBe(200)
         expect(first.body).toMatchObject({ status: 'ringing', joined: true, answered_at: null })
-        expect(first.body.peers).toEqual([{ id: ana!.id, name: 'Ana', avatar: null, seat: 1, status: 'ringing', claimed: false, seen_ago: null }])
+        expect(first.body.peers).toEqual([{ id: ana!.id, name: 'Ana', avatar: null, seat: 1, role: 'guest', status: 'ringing', claimed: false, seen_ago: null }])
 
         const second = await answer(code, ana!)
         expect(second.body).toMatchObject({ status: 'active', role: 'callee', seat: 1, joined: true, answered_at: expect.any(String) })
-        expect(second.body.peers).toEqual([{ id: ion!.id, name: 'Ion', avatar: null, seat: 0, status: 'joined', claimed: true, seen_ago: 0 }])
+        expect(second.body.peers).toEqual([{ id: ion!.id, name: 'Ion', avatar: null, seat: 0, role: 'host', status: 'joined', claimed: true, seen_ago: 0 }])
         expect(second.body.peer).toEqual({ id: ion!.id, name: 'Ion', avatar: null })
         expect(second.body.peer_claimed).toBe(true)
+    })
+
+    it('says who the host is in `peers`, from the participant row and nothing a client sends', async () => {
+        const { code, people: [ion, ana, mihai] } = await meeting(['Ana', 'Mihai'])
+        await answer(code, ion!)
+        await answer(code, ana!)
+
+        // A guest that claims to be the host wherever a client can put a word in: it stays a guest.
+        const claimed = await api('POST', `/api/meetings/${code}/holler/answer`, { token: mihai!.token, body: { tab: 'tm', role: 'host', host: true } })
+        expect(claimed.status).toBe(200)
+        await send(code, mihai!, 'state', { role: 'host', host: true })
+        await poll(code, mihai!, { call: code, tab: 'tm', claim: 1, role: 'host' })
+
+        const seen = await claimPoll(code, ana!, `tab-${ana!.id}`)
+        expect(seen.body.call.peers.map((p: any) => [p.name, p.role])).toEqual([['Ion', 'host'], ['Mihai', 'guest']])
+        expect((await claimPoll(code, ion!, `tab-${ion!.id}`)).body.call.peers.map((p: any) => p.role)).toEqual(['guest', 'guest'])
+
+        // People who left keep their role while they are still listed.
+        await holler(code, ion!, 'POST', 'hangup')
+        const after = await claimPoll(code, ana!, `tab-${ana!.id}`)
+        expect(after.body.call.peers.find((p: any) => p.id === ion!.id)).toMatchObject({ status: 'left', role: 'host' })
     })
 
     it('refuses a second answer as not_ringing', async () => {

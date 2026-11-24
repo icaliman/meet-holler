@@ -1,0 +1,18 @@
+# Headers on every page and file of the app (Workers static assets read this
+# file from the build). The API sets its own in worker/lib/security.ts.
+# docs/security.md explains each choice; web/src/headers.test.ts keeps the
+# policy and index.html in step.
+#
+# Scripts, styles, fonts and requests only from this origin; no inline script
+# (the theme script is /theme.js for that reason). Styles allow inline because
+# Svelte sets style attributes. Video elements play camera streams and blobs.
+# The camera, the microphone and screen capture are for this origin only, never
+# for a frame, and the app cannot be framed at all. HSTS is set at Cloudflare.
+/*
+  Content-Security-Policy: default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; media-src 'self' blob: mediastream:; font-src 'self'; connect-src 'self'; manifest-src 'self'; worker-src 'none'; object-src 'none'; base-uri 'none'; form-action 'self'; frame-src 'none'; frame-ancestors 'none'
+  Permissions-Policy: camera=(self), microphone=(self), display-capture=(self), fullscreen=(self), geolocation=(), payment=(), usb=(), midi=(), magnetometer=(), gyroscope=(), accelerometer=()
+  Referrer-Policy: no-referrer
+  X-Content-Type-Options: nosniff
+  X-Frame-Options: DENY
+  Cross-Origin-Opener-Policy: same-origin
+  Cross-Origin-Resource-Policy: same-origin

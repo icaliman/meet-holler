@@ -1,8 +1,14 @@
 import type { Context } from 'hono'
 import { invalid } from './errors'
 
-/** The JSON body as an object; `invalid` for anything else. */
+/**
+ * The JSON body as an object; `invalid` for anything else, and for JSON sent
+ * as another content type: only `application/json` makes a browser ask before
+ * it lets another site send the request (lib/security.ts).
+ */
 export async function jsonBody(c: Context): Promise<Record<string, unknown>> {
+    if (! /^application\/json\s*(;|$)/i.test(c.req.header('Content-Type') ?? '')) throw invalid('Send the body as application/json.')
+
     let body: unknown
     try {
         body = await c.req.json()

@@ -6,6 +6,9 @@
     import PeoplePanel from './PeoplePanel.svelte'
     import Sheet from './Sheet.svelte'
     import Tile from './Tile.svelte'
+    import AnnotateToolbar from '../annotate/AnnotateToolbar.svelte'
+    import AnnotationLayer from '../annotate/AnnotationLayer.svelte'
+    import { TOOL_KEYS } from '../annotate/annotations.svelte'
     import Mark from '../ui/Mark.svelte'
     import Icon from '../ui/Icon.svelte'
     import { toast, toasts } from '../ui/toast-store.svelte'
@@ -20,6 +23,7 @@
     let panel = $state<'people' | 'settings' | null>(null)
     let stageWidth = $state(1280)
     let stageHeight = $state(720)
+    let spot: HTMLDivElement | undefined = $state()
 
     const sharer = $derived(room.people.find((p) => p.sharing) ?? null)
     const others = $derived(room.people.filter((p) => ! p.me))
@@ -67,10 +71,16 @@
         const target = event.target as HTMLElement | null
         if (target?.closest('input, textarea, select, [contenteditable="true"]')) return
         const key = event.key.toLowerCase()
-        if (key === 'm' && room.hasMicrophone) room.toggleMic()
+        const marks = room.annotations
+        if (marks?.sharerId && key === 'escape' && marks.tool) marks.setTool(null)
+        else if (marks?.sharerId && TOOL_KEYS[key] && ! event.shiftKey) {
+            if (! marks.canAnnotate) return
+            marks.setTool(marks.tool === TOOL_KEYS[key] ? null : TOOL_KEYS[key])
+        }
+        else if (key === 'm' && room.hasMicrophone) room.toggleMic()
         else if (key === 'v' && room.hasCamera) room.toggleCamera()
         else if (key === 's' && room.canShare) room.toggleShare()
-        else if (key === '?') toast('Shortcuts: M microphone, V camera, S share screen.', { timeout: 6000 })
+        else if (key === '?') toast(marks?.sharerId ? 'Shortcuts: M microphone, V camera, S share screen. On a shared screen: P pointer, D pen, A arrow, H highlighter, Escape to put it down.' : 'Shortcuts: M microphone, V camera, S share screen.', { timeout: 6000 })
         else return
         event.preventDefault()
     }
@@ -115,8 +125,12 @@
             bind:clientHeight={stageHeight}
         >
             {#if sharer}
-                <div class="spot">
+                <div class="spot" bind:this={spot}>
                     <Tile person={sharer} voice={room.voices.get(sharer.me ? 'me' : sharer.id)} speaker={room.speaker} stage />
+                    {#if room.annotations}
+                        <AnnotationLayer annotations={room.annotations} container={spot} />
+                        <AnnotateToolbar annotations={room.annotations} />
+                    {/if}
                 </div>
                 {#if strip.length}
                     <div class="strip">
@@ -148,6 +162,7 @@
                 <Sheet title="Settings" onclose={() => (panel = null)}>
                     <DevicePicker idPrefix="room" load={() => room.devices()} choose={(kind, id) => room.setDevice(kind, id)} />
                     <p class="tip">Shortcuts: <kbd>M</kbd> microphone, <kbd>V</kbd> camera, <kbd>S</kbd> share screen.</p>
+                    <p class="tip">On a shared screen: <kbd>P</kbd> pointer, <kbd>D</kbd> pen, <kbd>A</kbd> arrow, <kbd>H</kbd> highlighter, <kbd>Esc</kbd> to put it down.</p>
                 </Sheet>
             </div>
         {/if}
@@ -320,6 +335,7 @@
     }
 
     .spot {
+        position: relative;
         display: grid;
         min-height: 0;
         min-width: 0;
