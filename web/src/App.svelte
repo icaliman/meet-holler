@@ -8,6 +8,7 @@
     import Notice from './lib/ui/Notice.svelte'
     import ThemeSwitch from './lib/ui/ThemeSwitch.svelte'
     import Toasts from './lib/ui/Toasts.svelte'
+    import Announcer from './lib/ui/Announcer.svelte'
     import { router, startRouter } from './lib/router.svelte'
 
     onMount(() => startRouter())
@@ -50,6 +51,11 @@
                 <Ready code={route.code} />
             {:else if route.name === 'meeting'}
                 <Meeting code={route.code} />
+            {:else if import.meta.env.DEV && routeKey === '/dev/room'}
+                <!-- Dev only: the room with made-up people (src/dev/), left out of the build. -->
+                {#await import('./dev/DemoRoom.svelte') then demo}
+                    <demo.default />
+                {/await}
             {:else}
                 <Notice mood="missing" title="There's nothing here">
                     <p>This page doesn't exist. If you were looking for a meeting, check the link in your invite.</p>
@@ -68,6 +74,7 @@
 </div>
 
 <Toasts />
+<Announcer />
 
 <style>
     .shell {

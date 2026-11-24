@@ -47,6 +47,7 @@ describe('opening a meeting link', () => {
         render(Meeting, { code: 'xxxsxhedxx' })
         expect(hostKeyFor('xxxsxhedxx')).toBe(store.meetings.get('xxxsxhedxx')!.hostKey)
         expect(location.hash).toBe('')
-        expect(await screen.findByText(/You're the host/)).toBeInTheDocument()
+        expect(await screen.findByText(/you're the host/i)).toBeInTheDocument()
+        expect(screen.getByRole('button', { name: 'Open the meeting' })).toBeInTheDocument()
     })
 })
