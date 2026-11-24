@@ -40,7 +40,7 @@ The Worker's JSON API, everything under `/api/*`. [ARCHITECTURE.md](ARCHITECTURE
 | `full` | 409 | four people are in the meeting |
 | `not_started` | 409 | a scheduled meeting before its start time that the host has not opened yet |
 | `ended` | 410 | the host ended the meeting (or it expired) |
-| `rate_limited` | 429 | too many requests from this address, or too many wrong passcodes for this meeting; `Retry-After` says how many seconds to wait |
+| `rate_limited` | 429 | too many requests from this address, too many wrong passcodes for this meeting, too many people trying to get into it, or too many meetings being created at once; `Retry-After` says how many seconds to wait |
 
 **Auth.** Joining returns a `token`. Send it as `Authorization: Bearer <token>` on every route that needs it. The token is HMAC-signed (`SESSION_SECRET`) and names one participant of one meeting; keep it in `sessionStorage` so each tab is its own participant.
 
@@ -50,7 +50,21 @@ The host is whoever joins with the meeting's `hostKey`. Host routes accept eithe
 
 **Headers on every answer:** `Cache-Control: no-store`, `X-Content-Type-Options: nosniff`, `Referrer-Policy: no-referrer`, `X-Frame-Options: DENY`, `Cross-Origin-Resource-Policy: same-origin` and a `Content-Security-Policy` that allows nothing (`default-src 'none'; frame-ancestors 'none'`). The pages get theirs (the app's Content-Security-Policy, `Permissions-Policy` for the camera, the microphone and screen capture) from `web/public/_headers`.
 
-**Rate limits** (per IP address, per Worker instance, so they are a brake, not a wall): creating meetings 20 per 10 minutes, joining 30 per minute, everything else 600 per minute. Wrong passcodes are counted per meeting in D1: after 10 in 15 minutes the meeting answers `rate_limited` to every passcode until the window passes.
+**Rate limits.** A client is its address for IPv4 and its /64 for IPv6 (one home has a whole /64).
+
+| What | Limit | Counted |
+| --- | --- | --- |
+| Creating meetings | 20 per 10 minutes per client | in D1, so it holds across Worker instances |
+| Creating meetings, everyone together | 300 per hour | in D1; a ceiling on how many D1 writes new meetings can use in a day, far above what the request budget lets real people do |
+| Joining | 60 per 10 minutes per client (and 30 per minute per instance) | in D1 |
+| Everything else | 600 per minute per client | in each Worker instance's memory: a brake on a script, not a wall (a poll cannot afford a row written) |
+| Wrong passcodes | 10 per 15 minutes per meeting | on the meeting, in D1 |
+| People in a waiting room | 20 still asking at once | in the join itself |
+| Participant records per meeting | 60 (not counting against the host) | in the join itself |
+
+A passcode guess takes one of the meeting's ten tries before it is checked and a right one gives it back, so guesses sent at the same moment cannot outrun the count. Once the ten are used the meeting answers `rate_limited` to every passcode until the window passes: that includes the right one, so someone who knows the code can keep guests out of a private meeting for a while (the host's link still gets in). See [security.md](security.md).
+
+People who left, were denied or removed, or stopped asking in the waiting room are forgotten 10 minutes later (by the next join): their token then answers `401`.
 
 ## Meetings
 
@@ -137,7 +151,7 @@ A calendar file (`text/calendar`, `attachment; filename="meeting-<code>.ics"`) f
 
 `state` is `admitted` (go ahead and start Holler) or `waiting` (the meeting has a waiting room: poll `/me`).
 
-The checks, in order: the meeting exists (`not_found`), has not ended (`ended`), the passcode (`passcode_required`, `passcode_wrong`, `rate_limited`), then for guests only: started (`not_started`) and not locked (`locked`); then for everyone: room for one more (`full`). The host passes the passcode, start-time and lock checks, but not the capacity. Joining as host opens a scheduled meeting early.
+The checks, in order: the meeting exists (`not_found`), has not ended (`ended`), the passcode (`passcode_required`, `passcode_wrong`, `rate_limited`), then for guests only: started (`not_started`) and not locked (`locked`); then for everyone: room for one more (`full`), and for guests the flood limits (`rate_limited`: 20 people waiting, 60 records in the meeting). The host passes the passcode, start-time and lock checks, but not the capacity. Joining as host opens a scheduled meeting early.
 
 Every join makes a new participant. Someone who left and comes back joins again (a reload does not need to: the token in `sessionStorage` still works, see [Reconnecting](#reconnecting-after-a-reload)).
 
@@ -155,7 +169,7 @@ A waiting guest polls this every 3–5 seconds until `state` changes. The states
 | `removed` | the host removed them |
 | `left` | they hung up, or went quiet for too long |
 
-A waiting guest who stops polling for a minute drops off the host's list (they are still `waiting` if they come back).
+A waiting guest who stops polling for a minute drops off the host's list (they are still `waiting` if they come back within 10 minutes; after that they join again).
 
 ### `GET /api/meetings/:code/waiting`
 
@@ -333,8 +347,8 @@ Measured against local D1 (`meta.rows_written` / `meta.rows_read` of each statem
 | Poll that acknowledges signals | 1 per signal read | the same + 1 per signal |
 | Signal to one person | 3 (row, index, sequence) | 10–17 |
 | Signal to everyone in a 4-person call | 7 | about 25 |
-| Create a meeting | 2 | 1 |
-| Join | 2–3 | about 10 |
+| Create a meeting | 4: the meeting (2) and the two rate-limit counters | 3 |
+| Join | 3–4 (5–6 with a passcode) | about 12 |
 | Waiting guest's `/me` | 1 every 20 s (heartbeat), else 0 | about 3 |
 
 A poll is one D1 batch: expire quiet people, claim or heartbeat, acknowledge read signals, read the meeting, its participants and my new signals. Each write statement only writes when its condition holds, so a quiet poll writes nothing. The tables have one secondary index each (participants by meeting, signals by recipient), because every index adds a written row.

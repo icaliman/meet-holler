@@ -66,4 +66,16 @@ describe('the daily cleanup', () => {
         expect(await row('SELECT code FROM meetings WHERE code = ?', code)).toBeNull()
         expect(await row('SELECT id FROM participants WHERE meeting_code = ?', code)).toBeNull()
     })
+
+    it('deletes rate-limit counters whose window passed', async () => {
+        vi.useFakeTimers({ toFake: ['Date'] })
+        vi.setSystemTime(new Date('2027-10-01T10:00:00Z'))
+        const insert = env.DB.prepare('INSERT INTO rate_limits (key, window_start, count) VALUES (?, ?, 3)')
+        await env.DB.batch([insert.bind('create:old', Date.now() - 2 * DAY), insert.bind('create:fresh', Date.now() - 60_000)])
+
+        await runCron()
+
+        expect(await row('SELECT key FROM rate_limits WHERE key = ?', 'create:old')).toBeNull()
+        expect(await row('SELECT key FROM rate_limits WHERE key = ?', 'create:fresh')).not.toBeNull()
+    })
 })
