@@ -36,6 +36,8 @@ export interface Meeting {
     participantCount: number | null
     capacity: number
     hostName?: string | null
+    /** `host`: signaling is relayed through the host's browser, so guests stop polling (docs/relay-signaling.md). */
+    relay?: 'host' | null
 }
 
 export interface CreateMeetingInput {

@@ -63,11 +63,19 @@ export class FakeDataChannel extends EventTarget {
     send(data) {
         if (this.readyState !== 'open') throw new Error('InvalidStateError')
         this.sent.push(data)
+        // Wired to the other side's channel (`joinChannels()`): it arrives there, in order, a moment later.
+        const remote = this.remote
+        if (remote) queueMicrotask(() => { if (remote.readyState === 'open') remote.dispatchEvent(Object.assign(new Event('message'), { data })) })
     }
 
     close() {
+        if (this.readyState === 'closed') return
         this.readyState = 'closed'
         this.dispatchEvent(new Event('close'))
+        // Closing one end closes the other.
+        const remote = this.remote
+        this.remote = null
+        if (remote?.readyState === 'open') remote.close()
     }
 
     // ---- what the network would do ------------------------------------------
@@ -204,6 +212,22 @@ export class FakeRTCPeerConnection extends EventTarget {
         this.dispatchEvent(Object.assign(new Event('icecandidate'), {
             candidate: candidate === null ? null : { toJSON: () => candidate },
         }))
+    }
+}
+
+/**
+ * The data channels of two connections that face each other come up: each one is open
+ * and what one side sends arrives on the other. `a` and `b` are the `Link`s (or anything
+ * with `channels`, a Map by label) the two clients have to each other.
+ */
+export function joinChannels(a, b) {
+    for (const [label, channel] of a.channels) {
+        const other = b.channels.get(label)
+        if (! other) continue
+        channel.remote = other
+        other.remote = channel
+        if (channel.readyState !== 'open') channel.open()
+        if (other.readyState !== 'open') other.open()
     }
 }
 

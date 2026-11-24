@@ -86,16 +86,18 @@ meetings.post('/', rateLimit('create'), durableRateLimit('create'), async (c) =>
         end_reason: null,
         pass_failures: 0,
         pass_window: null,
+        // Decided once, here: a deploy that flips the variable leaves running meetings alone.
+        relay: c.env.RELAY_SIGNALING === 'host' ? 'host' : null,
     }
 
     // A collision among 31^10 codes is unlikely, but the primary key decides.
     for (let attempt = 0; ; attempt++) {
         row.code = newCode()
         const inserted = await c.env.DB.prepare(`
-            INSERT INTO meetings (code, title, visibility, passcode_hash, waiting_room, locked, scheduled_at, duration_min, host_name, host_key_hash, created_at)
-            VALUES (?1, ?2, ?3, ?4, ?5, 0, ?6, ?7, ?8, ?9, ?10)
+            INSERT INTO meetings (code, title, visibility, passcode_hash, waiting_room, locked, scheduled_at, duration_min, host_name, host_key_hash, created_at, relay)
+            VALUES (?1, ?2, ?3, ?4, ?5, 0, ?6, ?7, ?8, ?9, ?10, ?11)
             ON CONFLICT (code) DO NOTHING
-        `).bind(row.code, row.title, row.visibility, row.passcode_hash, row.waiting_room, row.scheduled_at, row.duration_min, row.host_name, row.host_key_hash, now).run()
+        `).bind(row.code, row.title, row.visibility, row.passcode_hash, row.waiting_room, row.scheduled_at, row.duration_min, row.host_name, row.host_key_hash, now, row.relay ?? null).run()
 
         if (inserted.meta.changes === 1) break
         if (attempt >= 4) throw new Error('Could not find a free meeting code.')

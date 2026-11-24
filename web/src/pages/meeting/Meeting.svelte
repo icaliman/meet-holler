@@ -12,6 +12,7 @@
     import { gate } from '../../lib/gate'
     import { next, rejoinBudget, type FlowEvent, type Phase } from '../../lib/flow'
     import { explain } from '../../lib/messages'
+    import { relays } from '../../lib/holler'
     import { forgetHostKey, hostKeyFor, rememberHostKey, rememberName, savedName, takeHostFragment } from '../../lib/storage'
     import { forgetSession, rememberSession, sessionFor, type Session } from '../../lib/session'
     import { clearToasts, toast } from '../../lib/ui/toast-store.svelte'
@@ -147,6 +148,7 @@
             muted: preview.muted,
             cameraOff: preview.cameraOff,
             devices: preview.devices,
+            relay: relays(meeting),
             // Only the room on screen decides what happens next; an old one ending late is ignored.
             onEnded: (reason, othersAlive) => { if (room === live) callEnded(reason, othersAlive) },
         })

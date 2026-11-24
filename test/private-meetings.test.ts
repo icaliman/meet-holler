@@ -27,6 +27,8 @@ describe('a private meeting, to someone with only the link', () => {
             durationMin: 45,
             status: 'open',
             capacity: 4,
+            // How this deployment carries signaling: nothing about the meeting or who is in it.
+            relay: null,
             ...withheld,
         })
         expect(JSON.stringify(seen.body)).not.toContain('merger')

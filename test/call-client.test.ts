@@ -192,7 +192,7 @@ describe('CallClient against the Worker', () => {
         expect(ana.call?.claimed_elsewhere).toBe(false)
     })
 
-    it('known issue (holler-js 1.0): the last one left can be hung up when the leaver\'s connection drops first', async () => {
+    it('keeps the last one left in the meeting when the leaver\'s connection drops before their leave is polled', async () => {
         const { code, people } = await meetingOf(['Ion', 'Ana'])
         const [ion, ana] = people.map((person) => clientFor(code, person))
         for (const client of [ion!, ana!]) client.resumeCall(code, { answer: true })
@@ -200,13 +200,17 @@ describe('CallClient against the Worker', () => {
         connectAll(ion!, ana!)
         await waitFor(() => expect([ion!.state, ana!.state]).toEqual(['active', 'active']))
 
-        // Ana's connection drops before Ion's next poll hears that she left: Ion's
-        // client arms its reconnect timer while the call is still `active`.
+        // Ana's connection drops before Ion's next poll hears that she left. holler-js 1.0 armed its
+        // reconnect timer here and hung Ion up as `dropped` (packstub/holler-js#16); now the call
+        // rings again and he waits.
         for (const link of (ion as any).topology.links.values()) link.pc.setConnectionState('disconnected')
         await ana!.hangUp()
 
-        await waitFor(() => expect(ion!.endedReasons).toEqual(['dropped']))
-        // So the app re-joins (docs/api.md, Known issues); the meeting itself is still open.
+        await waitFor(() => expect(ion!.state).toBe('calling'))
+        // Past the reconnect timeout (3 s in these tests).
+        await new Promise((resolve) => setTimeout(resolve, 3500))
+        expect(ion!.endedReasons).toEqual([])
+        expect(ion!.state).toBe('calling')
         expect((await api('GET', `/api/meetings/${code}`)).body.status).toBe('open')
-    })
+    }, 15000)
 })

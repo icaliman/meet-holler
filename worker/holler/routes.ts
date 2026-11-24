@@ -2,12 +2,12 @@ import { Hono, type Context } from 'hono'
 import { normalizeCode } from '../lib/codes'
 import { randomToken, verifyToken } from '../lib/crypto'
 import { ApiError } from '../lib/errors'
-import { CLAIM_STALE_MS, HEARTBEAT_MS, SIGNAL_TTL_MS } from '../lib/timing'
+import { CAPACITY, CLAIM_STALE_MS, HEARTBEAT_MS, SIGNAL_TTL_MS } from '../lib/timing'
 import { jsonBody } from '../lib/validate'
 import { bearerToken, participantFromToken, routeCode } from '../meetings/auth'
 import { expireStatement, LIVE, LIVE_SQL, type MeetingRow, type ParticipantRow } from '../meetings/model'
 import { iceServers } from './ice'
-import { inCallCount, meetingView, presentCall } from './present'
+import { hubOf, inCallCount, meetingView, presentCall, relayAnswer } from './present'
 
 /**
  * Holler's signaling routes for one meeting, the server side of
@@ -60,6 +60,13 @@ function callFor(meeting: MeetingRow, participants: ParticipantRow[], meId: stri
     return presentCall(meeting, participants, me, tab, now)
 }
 
+/** The peers a hub says are connected to it: a few participant ids, comma separated. */
+function presentFrom(value: string | undefined): string[] {
+    if (! value) return []
+
+    return [...new Set(value.split(',').filter((id) => /^[A-Za-z0-9_-]{1,64}$/.test(id)))].slice(0, CAPACITY)
+}
+
 function tabFrom(value: unknown): string | null {
     return typeof value === 'string' && value !== '' ? value.slice(0, 32) : null
 }
@@ -74,6 +81,11 @@ function tabFrom(value: unknown): string | null {
  *   3. keep the heartbeat of a call I put on hold,
  *   4. delete the signals this tab has read (up to `after`),
  *   5. read the meeting, its people and my new signals.
+ *
+ * In a meeting that relays (docs/relay-signaling.md) the tab also says whether
+ * it relays (`relay=1`, written once), and the hub names the people connected
+ * to it (`present`): its poll is their heartbeat, and the answer carries what
+ * to pass on to them (`relay`).
  */
 holler.get('/:code/holler/poll', async (c) => {
     const code = routeCode(c)
@@ -92,6 +104,9 @@ holler.get('/:code/holler/poll', async (c) => {
     const otherKind = query.kind !== undefined && query.kind !== '' && query.kind !== 'call'
     const claiming = named && tab !== null && claim && ! otherKind
     const nonce = randomToken(6)
+    const relays = query.relay === '1' ? 1 : 0
+    const present = claiming && relays ? presentFrom(query.present).filter((id) => id !== meId) : []
+    const RELAY_MEETING = `EXISTS (SELECT 1 FROM meetings WHERE code = ?2 AND relay = 'host' AND ended_at IS NULL)`
 
     const statements: D1PreparedStatement[] = [expireStatement(db, code, now)]
     if (claiming) {
@@ -113,6 +128,23 @@ holler.get('/:code/holler/poll', async (c) => {
                   AND EXISTS (SELECT 1 FROM participants WHERE id = ?1 AND tab = ?3)
             `).bind(meId, after, tab))
         }
+        // Whether this tab relays, once (and again only if another kind of tab takes the side over).
+        statements.push(db.prepare(`
+            UPDATE participants SET relay = ?3
+            WHERE id = ?1 AND meeting_code = ?2 AND status IN ('ringing', 'joined') AND relay IS NOT ?3 AND ${RELAY_MEETING}
+        `).bind(meId, code, relays))
+        if (present.length) {
+            // The hub answers for the people connected to it: its poll is their heartbeat, at most
+            // every 10 s each like their own would be. Only the host, from the tab that holds its
+            // side, and only for people in the call whose tab relays and has not let go (`leave`).
+            statements.push(db.prepare(`
+                UPDATE participants SET seen_at = ?4
+                WHERE meeting_code = ?2 AND id IN (${present.map((_, index) => `?${index + 5}`).join(', ')})
+                  AND status = 'joined' AND tab IS NOT NULL AND relay = 1 AND seen_at < ?4 - ${HEARTBEAT_MS}
+                  AND ${RELAY_MEETING}
+                  AND EXISTS (SELECT 1 FROM participants h WHERE h.id = ?1 AND h.meeting_code = ?2 AND h.role = 'host' AND h.status = 'joined' AND h.relay = 1 AND h.tab = ?3)
+            `).bind(meId, code, tab, now, ...present))
+        }
     }
     statements.push(db.prepare(`
         UPDATE participants SET seen_at = ?2
@@ -123,6 +155,10 @@ holler.get('/:code/holler/poll', async (c) => {
         ? [
             db.prepare(`SELECT id, meeting_code, type, payload, from_id FROM signals WHERE to_id = ?1 AND id > ?2 ORDER BY id LIMIT ${MAX_SIGNALS_PER_POLL}`).bind(meId, after),
             db.prepare('SELECT MAX(id) AS last FROM signals WHERE to_id = ?1').bind(meId),
+            // Who among them has signals waiting here (sent by a tab that does not relay): the hub tells them to fetch.
+            ...(present.length
+                ? [db.prepare(`SELECT DISTINCT to_id FROM signals WHERE to_id IN (${present.map((_, index) => `?${index + 2}`).join(', ')}) AND meeting_code = ?1`).bind(code, ...present)]
+                : []),
         ]
         : []
 
@@ -157,15 +193,22 @@ holler.get('/:code/holler/poll', async (c) => {
         }
     }
 
-    const present = () => presentCall(meeting, participants, me, tab, now)
+    const view = () => presentCall(meeting, participants, me, tab, now)
+
+    // The hub's answer for the people connected to it; also its last one, when the meeting has just
+    // ended, so they hear it from the hub instead of finding out when its channels close.
+    const hub = holdsSide ? hubOf(meeting, participants, now) : null
+    const lastWord = isEnded && claiming && meeting.relay === 'host' && me.role === 'host' && me.relay === 1 && me.tab === tab
+    const waiting = present.length ? ((results[base + 4]?.results ?? []) as Array<{ to_id: string }>).map((signal) => signal.to_id) : []
 
     return c.json({
-        call: current ? present() : null,
-        incoming: ! otherKind && ! isEnded && me.status === 'ringing' && current === null ? present() : null,
-        on_hold: ! otherKind && ! isEnded && me.status === 'on_hold' ? present() : null,
+        call: current ? view() : null,
+        incoming: ! otherKind && ! isEnded && me.status === 'ringing' && current === null ? view() : null,
+        on_hold: ! otherKind && ! isEnded && me.status === 'on_hold' ? view() : null,
         signals,
         cursor: signals.length ? signals[signals.length - 1]!.id : after,
         meeting: meetingView(meeting, participants, me, now),
+        ...(hub?.id === me.id || lastWord ? { relay: relayAnswer(meeting, participants, me, present, waiting, now) } : {}),
     })
 })
 
