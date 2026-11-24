@@ -1,0 +1,8 @@
+# Copy to .dev.vars (gitignored) for `npm run dev`.
+# Signs the participant tokens. Any long random string locally; in production
+# `wrangler secret put SESSION_SECRET` with `openssl rand -base64 32`.
+SESSION_SECRET=change-me-to-a-long-random-string
+
+# Optional: Cloudflare Realtime TURN, for people behind strict NATs and firewalls.
+# TURN_KEY_ID=
+# TURN_KEY_API_TOKEN=

@@ -1,0 +1,29 @@
+{
+  "name": "meet-holler",
+  "private": true,
+  "type": "module",
+  "license": "MIT",
+  "scripts": {
+    "dev": "node scripts/build.mjs --assets-only && wrangler dev",
+    "build": "node scripts/build.mjs",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "typecheck": "wrangler types --strict-vars=false --check && tsc --noEmit",
+    "types": "wrangler types --strict-vars=false",
+    "db:migrate:local": "wrangler d1 migrations apply DB --local",
+    "deploy": "npm run build && wrangler deploy"
+  },
+  "engines": {
+    "node": ">=22"
+  },
+  "dependencies": {
+    "hono": "^4.13.21"
+  },
+  "devDependencies": {
+    "@cloudflare/vitest-plugin": "^1.9.1",
+    "@packstub/holler": "^1.0.0",
+    "typescript": "~6.0.3",
+    "vitest": "^5.1.1",
+    "wrangler": "^4.167.0"
+  }
+}

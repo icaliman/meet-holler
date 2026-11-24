@@ -1,0 +1,43 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "meet-holler",
+  "main": "worker/index.ts",
+  "compatibility_date": "2026-11-01",
+  "observability": { "enabled": true },
+
+  // The Svelte app (web/dist) is served as static assets: free, not counted as
+  // Worker requests. Unknown paths fall back to index.html (client-side routes);
+  // /api/* always reaches the Worker first.
+  "assets": {
+    "directory": "web/dist",
+    "binding": "ASSETS",
+    "not_found_handling": "single-page-application",
+    "run_worker_first": ["/api/*"]
+  },
+
+  // `wrangler d1 create meet-holler` prints the real database_id; the local
+  // database (wrangler dev, tests) does not need one.
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "meet-holler",
+      "database_id": "00000000-0000-0000-0000-000000000000",
+      "migrations_dir": "migrations"
+    }
+  ],
+
+  // Once a day: end meetings everyone walked away from, delete old ones and
+  // stale signals.
+  "triggers": { "crons": ["17 3 * * *"] },
+
+  // Not secret. SESSION_SECRET signs the participant tokens:
+  // `wrangler secret put SESSION_SECRET`, and .dev.vars locally (see
+  // .dev.vars.example). TURN_KEY_ID and TURN_KEY_API_TOKEN (Cloudflare Realtime
+  // TURN) are optional secrets, typed in worker/env.d.ts.
+  "vars": {
+    "STUN_URL": "stun:stun.cloudflare.com:3478"
+  },
+  "secrets": {
+    "required": ["SESSION_SECRET"]
+  }
+}
