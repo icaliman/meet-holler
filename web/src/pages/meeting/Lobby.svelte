@@ -67,6 +67,8 @@
     const whoIsIn = $derived.by(() => {
         const n = meeting.participantCount
         const host = meeting.hostName ? `Hosted by ${meeting.hostName}. ` : ''
+        // A private meeting says who is in only after the passcode.
+        if (n === null) return 'Private meeting.'
         if (n === 0) return `${host}Nobody is in yet.`
         if (n === 1) return `${host}One person is in.`
 

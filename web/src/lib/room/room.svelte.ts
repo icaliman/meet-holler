@@ -293,7 +293,7 @@ export class Room implements RoomLike {
     async setLocked(locked: boolean): Promise<void> {
         try {
             const { meeting } = await api.update(this.code, { locked }, this.token())
-            this.meeting = { ...(this.meeting ?? { status: 'open', title: null, waitingRoom: meeting.waitingRoom }), locked: meeting.locked, waitingRoom: meeting.waitingRoom }
+            this.meeting = { ...(this.meeting ?? { status: 'open', title: null, waitingRoom: meeting.waitingRoom }), locked: meeting.locked === true, waitingRoom: meeting.waitingRoom }
             announce(locked ? 'Meeting locked. Nobody new can join.' : 'Meeting unlocked.')
         } catch {
             toast(locked ? "We couldn't lock the meeting. Try again." : "We couldn't unlock the meeting. Try again.", { tone: 'error' })
@@ -303,7 +303,7 @@ export class Room implements RoomLike {
     async setWaitingRoom(on: boolean): Promise<void> {
         try {
             const { meeting } = await api.update(this.code, { waitingRoom: on }, this.token())
-            this.meeting = { ...(this.meeting ?? { status: 'open', title: null, locked: meeting.locked }), waitingRoom: meeting.waitingRoom, locked: meeting.locked }
+            this.meeting = { ...(this.meeting ?? { status: 'open', title: null, locked: meeting.locked === true }), waitingRoom: meeting.waitingRoom, locked: meeting.locked === true }
             announce(on ? 'Waiting room on. You let each guest in.' : 'Waiting room off. Guests come straight in.')
         } catch {
             toast("We couldn't change the waiting room. Try again.", { tone: 'error' })

@@ -42,6 +42,16 @@ describe('schedule form rules', () => {
         expect(suggestPasscode(() => 0.999999)).toMatch(/^\d{6}$/)
     })
 
+    it('takes them from the browser\'s cryptographic source, not Math.random', () => {
+        const weak = vi.spyOn(Math, 'random')
+        const strong = vi.spyOn(crypto, 'getRandomValues')
+
+        expect(suggestPasscode()).toMatch(/^[1-9]\d{5}$/)
+        expect(strong).toHaveBeenCalled()
+        expect(weak).not.toHaveBeenCalled()
+        vi.restoreAllMocks()
+    })
+
     it('labels durations', () => {
         expect(durationLabel(45)).toBe('45 minutes')
         expect(durationLabel(60)).toBe('1 hour')

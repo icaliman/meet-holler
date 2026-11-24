@@ -18,7 +18,11 @@ export type ErrorCode =
     | 'not_started'
     | 'network'
 
-/** Public information about a meeting: `GET /api/meetings/:code`. */
+/**
+ * Information about a meeting: `GET /api/meetings/:code`. A private meeting asked about with
+ * only the link (no passcode entered yet, no host key) withholds what it is about and who is
+ * in it: `title`, `hostName`, `locked` and `participantCount` are then `null`.
+ */
 export interface Meeting {
     code: string
     title: string | null
@@ -28,8 +32,8 @@ export interface Meeting {
     scheduledAt: string | null
     durationMin: number | null
     status: MeetingStatus
-    locked: boolean
-    participantCount: number
+    locked: boolean | null
+    participantCount: number | null
     capacity: number
     hostName?: string | null
 }

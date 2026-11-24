@@ -57,17 +57,35 @@ export function rememberTheme(theme: ThemeChoice): void {
     write(THEME, theme === 'auto' ? null : theme)
 }
 
-/** A `#host=<key>` fragment from a host link: remembered, then taken out of the address bar. */
-export function claimHostFragment(code: string, location: Location = globalThis.location): boolean {
-    const match = /(?:^#|&)host=([^&]+)/.exec(location?.hash ?? '')
-    if (! match) return false
+export function forgetHostKey(code: string): void {
+    const keys = read<Record<string, string>>(HOST_KEYS, {})
+    if (! (code in keys)) return
+    delete keys[code]
+    write(HOST_KEYS, keys)
+}
 
-    rememberHostKey(code, decodeURIComponent(match[1]))
+/**
+ * The key in a `#host=<key>` fragment (a host link), taken out of the address bar. It is
+ * handed back, **not stored**: anyone can write a link, so the page checks the key with the
+ * Worker first. Storing it unseen would let a link replace the real host's key with a wrong
+ * one, or make a guest's browser claim a host key and be refused at the door.
+ */
+export function takeHostFragment(location: Location = globalThis.location): string | null {
+    const match = /(?:^#|&)host=([^&]+)/.exec(location?.hash ?? '')
+    if (! match) return null
+
     try {
         history.replaceState(history.state, '', location.pathname + location.search)
     } catch {
         // Not in a browser: nothing to tidy.
     }
 
-    return true
+    try {
+        const key = decodeURIComponent(match[1])
+
+        return key.length > 0 && key.length <= 128 ? key : null
+    } catch {
+        // Not something we wrote: a broken escape.
+        return null
+    }
 }

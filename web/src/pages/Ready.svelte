@@ -8,6 +8,7 @@
     import { format, hostUrl, meetingPath, meetingUrl } from '../lib/code'
     import { explain } from '../lib/messages'
     import { hostKeyFor } from '../lib/storage'
+    import { saveFile } from '../lib/download'
     import { durationLabel } from '../lib/schedule'
     import { longDate, timeZone } from '../lib/time'
     import type { Meeting } from '../lib/types'
@@ -23,9 +24,13 @@
     let failure = $state<string | null>(null)
 
     $effect(() => {
-        api.getMeeting(code).then((fresh) => (meeting = fresh)).catch((error) => {
-            if (! meeting) failure = explain(error)
-        })
+        // As the host, when this browser made the meeting: a private one shows its title only to them.
+        api.getMeeting(code, hostKey ? { hostKey } : undefined)
+            .catch((error) => (hostKey ? api.getMeeting(code) : Promise.reject(error)))
+            .then((fresh) => (meeting = fresh))
+            .catch((error) => {
+                if (! meeting) failure = explain(error)
+            })
     })
 
     const link = $derived(meetingUrl(code))
@@ -33,6 +38,24 @@
 
     function share() {
         navigator.share?.({ title: meeting?.title ?? 'Meeting', text: invitation(), url: link }).catch(() => {})
+    }
+
+    // A private meeting's calendar file has its title only for the host, and a link cannot carry the key.
+    const calendarNeedsKey = $derived(meeting?.visibility === 'private' && Boolean(hostKey))
+    let savingCalendar = $state(false)
+    let calendarError = $state<string | null>(null)
+
+    async function saveCalendar() {
+        if (! hostKey) return
+        savingCalendar = true
+        calendarError = null
+        try {
+            saveFile(`${format(code)}.ics`, await api.ics(code, { hostKey }))
+        } catch (error) {
+            calendarError = explain(error)
+        } finally {
+            savingCalendar = false
+        }
     }
 
     function invitation(): string {
@@ -87,13 +110,18 @@
 
             <div class="buttons">
                 <Button variant="primary" href={meetingPath(code)} icon="arrowRight" size="lg">Start now</Button>
-                {#if meeting?.scheduledAt}
+                {#if meeting?.scheduledAt && calendarNeedsKey}
+                    <Button variant="secondary" icon="calendar" busy={savingCalendar} busyLabel="Saving…" onclick={saveCalendar}>Add to calendar</Button>
+                {:else if meeting?.scheduledAt}
                     <Button variant="secondary" href={api.icsUrl(code)} download="{format(code)}.ics" icon="calendar">Add to calendar</Button>
                 {/if}
                 {#if canShare}
                     <Button variant="ghost" icon="link" onclick={share}>Share…</Button>
                 {/if}
             </div>
+            {#if calendarError}
+                <p class="calendar-error" role="alert">{calendarError}</p>
+            {/if}
         </div>
 
         {#if hostKey}
@@ -199,6 +227,12 @@
         font-weight: 400;
         font-size: var(--text-sm);
         color: var(--ink-muted);
+    }
+
+    .calendar-error {
+        margin: 0;
+        font-size: var(--text-sm);
+        font-weight: 700;
     }
 
     .buttons {

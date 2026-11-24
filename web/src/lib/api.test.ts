@@ -45,6 +45,30 @@ describe('api client against the contract (dev mock)', () => {
         await expect(api.join('xxxsxhedxx', { name: 'Ana', hostKey: 'wrong' })).rejects.toMatchObject({ code: 'forbidden' })
     })
 
+    it('asks about a meeting as the host or as someone in it, and gets a private one in full only then', async () => {
+        const { meeting, hostKey } = await api.createMeeting({ visibility: 'private', passcode: '4321', waitingRoom: false, title: 'Interview' })
+
+        expect(await api.getMeeting(meeting.code)).toMatchObject({ title: null, participantCount: null, locked: null, requiresPasscode: true })
+        expect(await api.getMeeting(meeting.code, { hostKey })).toMatchObject({ title: 'Interview', participantCount: 0, locked: false })
+        await expect(api.getMeeting(meeting.code, { hostKey: 'not-the-key' })).rejects.toMatchObject({ code: 'forbidden' })
+
+        const guest = await api.join(meeting.code, { name: 'Ana', passcode: '4321' })
+        expect((await api.getMeeting(meeting.code, guest.token)).title).toBe('Interview')
+    })
+
+    it('fetches the calendar file with the host key in a header, never in the address', async () => {
+        const seen: { url: string, headers: Record<string, string> }[] = []
+        const recording = createApi({ fetch: (async (url: string, init: RequestInit) => {
+            seen.push({ url, headers: init.headers as Record<string, string> })
+
+            return new Response('BEGIN:VCALENDAR')
+        }) as typeof fetch })
+
+        const file = await recording.ics('xxxsxhedxx', { hostKey: 'the-key' })
+        expect(await file.text()).toBe('BEGIN:VCALENDAR')
+        expect(seen[0]).toEqual({ url: '/api/meetings/xxxsxhedxx.ics', headers: { 'X-Host-Key': 'the-key' } })
+    })
+
     it('reports a request that never got an answer as network', async () => {
         const offline = createApi({ fetch: (() => Promise.reject(new TypeError('Failed to fetch'))) as typeof fetch })
         const error = await offline.getMeeting('abcdefghjk').catch((e) => e)
