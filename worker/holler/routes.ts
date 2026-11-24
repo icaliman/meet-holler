@@ -337,8 +337,12 @@ holler.post('/:code/holler/signals', async (c) => {
 
 holler.get('/:code/holler/ice', async (c) => {
     const code = routeCode(c)
-    const { me } = await participantFromToken(c, code, bearerToken(c))
+    const { me, meeting } = await participantFromToken(c, code, bearerToken(c))
     assertAdmitted(me)
+    // Only for people in the meeting now: the answer can carry TURN credentials, which are worth
+    // something on their own. Someone who left, or a meeting that ended, has no call to connect.
+    if (meeting.ended_at !== null) throw ended()
+    if (! LIVE.includes(me.status)) throw notAllowed('You are not in this meeting.', 403)
 
     c.header('Cache-Control', 'no-store')
     return c.json(await iceServers(c.env))
