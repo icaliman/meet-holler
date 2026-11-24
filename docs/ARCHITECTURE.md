@@ -52,7 +52,7 @@ The token is an HMAC-signed value (`SESSION_SECRET`, a Worker secret) naming mee
 
 ### Free-plan budget (design constraint, not an afterthought)
 
-Free plan: 100k Worker requests/day, D1 100k row writes and 5M row reads/day. Polling is the cost. Rules: poll only while in a meeting or waiting; slow down (e.g. 1 s while negotiating, 3-5 s once media is connected, since media does not need signaling); one D1 `batch` per poll; write heartbeats rarely; static assets are free and do not count. A daily cleanup cron removes ended meetings and stale signals. Document the honest numbers (meetings/day at a given length) in the README.
+Free plan: 100k Worker requests/day, D1 100k row writes and 5M row reads/day. Polling is the cost. Rules: poll only while in a meeting or waiting; slow down (e.g. 1 s while negotiating, 3-5 s once media is connected, since media does not need signaling); one D1 `batch` per poll; write heartbeats rarely; static assets are free and do not count. A daily cleanup cron removes ended meetings and stale signals; a second one sweeps unread signals every 15 minutes. Document the honest numbers (meetings/day at a given length) in the README.
 
 STUN only by default (`stun:stun.cloudflare.com:3478`); an optional TURN (Cloudflare Realtime TURN) through secrets, served by the `ice` route, for restrictive networks.
 

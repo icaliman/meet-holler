@@ -23,6 +23,16 @@ export function cleanupStatements(db: D1Database, now: number): D1PreparedStatem
     ]
 }
 
+/**
+ * Every 15 minutes: signals nobody read within a minute. Polls and new signals
+ * delete what they pass, so this is for what is left behind when everyone in
+ * a meeting just stops asking; it keeps the table from growing between two
+ * daily runs.
+ */
+export async function sweepSignals(env: Env, now = Date.now()): Promise<void> {
+    await env.DB.prepare(`DELETE FROM signals WHERE created_at < ?1 - ${SIGNAL_TTL_MS}`).bind(now).run()
+}
+
 export async function cleanup(env: Env, now = Date.now()): Promise<void> {
     await env.DB.batch(cleanupStatements(env.DB, now))
 }
