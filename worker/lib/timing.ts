@@ -16,6 +16,9 @@ export const HOLD_TIMEOUT_MS = 120_000
 /** People who left stay in `peers` this long, so every client sees them go. */
 export const LEFT_VISIBLE_MS = 60_000
 
+/** The cleanup deletes signals nobody read within this long. */
+export const SIGNAL_TTL_MS = 60_000
+
 /** A waiting guest's `/me` poll writes its heartbeat at most this often. */
 export const WAITING_HEARTBEAT_MS = 20_000
 /** A waiting guest who stopped polling this long ago is off the host's list. */

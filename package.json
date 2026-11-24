@@ -21,6 +21,7 @@
   },
   "devDependencies": {
     "@cloudflare/vitest-plugin": "^1.9.1",
+    "@packstub/holler": "^1.0.0",
     "typescript": "~6.0.3",
     "vitest": "^5.1.1",
     "wrangler": "^4.167.0"

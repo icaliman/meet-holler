@@ -18,6 +18,8 @@ export default defineConfig(async () => {
         test: {
             include: ['test/**/*.test.ts'],
             setupFiles: ['./test/setup.ts'],
+            // workerd warns about event listeners that return a value; holler-js's arrow-function listeners do, harmlessly.
+            onConsoleLog: (log: string) => ! log.includes('An event handler returned'),
         },
     }
 })

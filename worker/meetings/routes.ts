@@ -311,6 +311,7 @@ meetings.post('/:code/end', async (c) => {
 
     await db.batch([
         db.prepare(`UPDATE meetings SET ended_at = ?2, end_reason = 'ended' WHERE code = ?1 AND ended_at IS NULL`).bind(code, now),
+        db.prepare('DELETE FROM signals WHERE meeting_code = ?1').bind(code),
     ])
 
     return c.json({ meeting: await meetingResponse(db, await findMeeting(db, code), now) })
@@ -330,6 +331,7 @@ meetings.post('/:code/remove/:id', async (c) => {
 
     await db.batch([
         db.prepare(`UPDATE participants SET status = 'removed', tab = NULL, left_at = ?3 WHERE id = ?2 AND meeting_code = ?1`).bind(code, id, now),
+        db.prepare('DELETE FROM signals WHERE to_id = ?1').bind(id),
     ])
 
     return c.json({ participant: publicParticipant({ ...target, status: 'removed' }) })

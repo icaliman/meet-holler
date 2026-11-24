@@ -27,7 +27,11 @@ npm run dev                       # the Worker and the built app on http://local
 | `npm run typecheck` | the Worker's TypeScript, and that `worker-configuration.d.ts` matches `wrangler.jsonc` (`npm run types` regenerates it) |
 | `npm run deploy` | build and `wrangler deploy` |
 
-The API is described in [docs/api.md](docs/api.md), with the free-plan budget.
+The API is described in [docs/api.md](docs/api.md).
+
+## Free-plan budget
+
+Everything runs on the Cloudflare free plan: 100,000 Worker requests a day, D1 100,000 rows written and 5 million read. The app's pages are static assets and cost nothing; the cost is the polling that relays WebRTC signaling. Polling every 3 seconds once a call is connected, that is about **80 participant-hours a day**: roughly 80 half-hour calls between two people, or 39 half-hour meetings of four, or 20 one-hour meetings of four. Requests run out first; D1 writes and reads stay well under their limits. The numbers and how they were measured are in [docs/api.md](docs/api.md#free-plan-budget).
 
 ## License
 
