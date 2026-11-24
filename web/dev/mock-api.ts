@@ -3,9 +3,11 @@
 
 import type { Plugin } from 'vite'
 import { MockStore, type MockRequest } from './mock-store'
+import { installHoller } from './mock-holler'
 
 export function mockApi({ latency = 250 }: { latency?: number } = {}): Plugin {
     const store = new MockStore()
+    installHoller(store)
 
     return {
         name: 'meet-holler-mock-api',
@@ -45,6 +47,10 @@ export function mockApi({ latency = 250 }: { latency?: number } = {}): Plugin {
                 // Polls answer at once; the rest wait a little, like a real network.
                 if (! url.pathname.endsWith('/poll')) await new Promise((r) => setTimeout(r, latency))
                 const response = store.handle(request)
+                // MOCK_LOG=1 prints every write, to follow a flow in the terminal.
+                if (process.env.MOCK_LOG && request.method !== 'GET') {
+                    console.log('[mock]', request.method, request.path, response.status, JSON.stringify(request.body ?? {}).slice(0, 60), (request.headers.authorization ?? '').slice(-6))
+                }
                 res.statusCode = response.status
                 for (const [key, value] of Object.entries(response.headers ?? {})) res.setHeader(key, value)
                 if (response.text !== undefined) {
