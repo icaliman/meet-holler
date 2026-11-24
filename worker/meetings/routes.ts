@@ -2,7 +2,7 @@ import { Hono, type Context } from 'hono'
 import { newCode } from '../lib/codes'
 import { hashPasscode, randomToken, safeEqual, sha256Hex, signToken, verifyPasscode } from '../lib/crypto'
 import { ApiError, invalid } from '../lib/errors'
-import { rateLimit } from '../lib/ratelimit'
+import { clientIp, clientKey, durableRateLimit, hitDurable, rateLimit } from '../lib/ratelimit'
 import { PASSCODE_MAX_FAILURES, PASSCODE_WINDOW_MS, WAITING_HEARTBEAT_MS, WAITING_STALE_MS } from '../lib/timing'
 import { jsonBody, optionalBoolean, optionalSecret, optionalText, requiredText } from '../lib/validate'
 import { codeFrom, findMeeting, requireHost, requireParticipant, routeCode } from './auth'
@@ -30,7 +30,7 @@ async function meetingResponse(db: D1Database, meeting: MeetingRow, now: number)
 
 // ---- create ------------------------------------------------------------------
 
-meetings.post('/', rateLimit('create'), async (c) => {
+meetings.post('/', rateLimit('create'), durableRateLimit('create'), async (c) => {
     const body = await jsonBody(c)
     const now = Date.now()
 
@@ -62,6 +62,9 @@ meetings.post('/', rateLimit('create'), async (c) => {
             durationMin = body.durationMin
         }
     }
+
+    // Everyone together, counted last: a request that was refused or invalid uses none of it.
+    await hitDurable(c.env.DB, 'createAll', '*', now, 'A lot of meetings are being created right now. Try again in a few minutes.')
 
     const hostKey = randomToken(24)
     const row: MeetingRow = {
@@ -150,7 +153,7 @@ async function checkPasscode(db: D1Database, meeting: MeetingRow, passcode: stri
     throw new ApiError('passcode_wrong', 'That passcode is not right.')
 }
 
-meetings.post('/:code/join', rateLimit('join'), async (c) => {
+meetings.post('/:code/join', rateLimit('join'), durableRateLimit('join'), async (c) => {
     const code = routeCode(c)
     const body = await jsonBody(c)
     const now = Date.now()
