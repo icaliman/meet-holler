@@ -8,8 +8,9 @@ export function gate(meeting: Meeting, isHost: boolean): Gate {
     if (meeting.status === 'ended') return 'ended'
     // The host can always open their meeting, early or not.
     if (meeting.status === 'scheduled' && ! isHost) return 'early'
-    if (meeting.participantCount >= meeting.capacity) return 'full'
-    if (meeting.locked && ! isHost) return 'locked'
+    // A private meeting does not say how full it is, or whether it is locked, before the passcode: the join does.
+    if ((meeting.participantCount ?? 0) >= meeting.capacity) return 'full'
+    if (meeting.locked === true && ! isHost) return 'locked'
 
     return 'lobby'
 }

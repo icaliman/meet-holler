@@ -28,7 +28,7 @@ export class ApiError extends Error {
 
 type Fetch = typeof fetch
 
-/** Who a host route is for: the host's participant token, or the host key itself (a page that has not joined). */
+/** Who a request is from: a participant's token, or the host key itself (a page that has not joined). */
 export type HostAuth = string | { hostKey: string }
 
 export interface ApiOptions {
@@ -76,8 +76,25 @@ export function createApi({ base = '', fetch: fetchFn }: ApiOptions = {}) {
 
     return {
         createMeeting: (input: CreateMeetingInput) => request<CreatedMeeting>('POST', '/api/meetings', { body: input }),
-        getMeeting: (code: string) => request<Meeting>('GET', m(code)),
+        /**
+         * The meeting. With `auth`, as someone the Worker knows: a private meeting shows its title
+         * and who is in only to them, and a host key that is not this meeting's is `forbidden`.
+         */
+        getMeeting: (code: string, auth?: HostAuth) => request<Meeting>('GET', m(code), { token: auth }),
         icsUrl: (code: string) => `${base}${m(code)}.ics`,
+        /** The calendar file as the host gets it (a private meeting's has its title only for them): a link cannot carry the key. */
+        ics: async (code: string, auth: HostAuth): Promise<Blob> => {
+            const headers: Record<string, string> = typeof auth === 'string' ? { Authorization: `Bearer ${auth}` } : { 'X-Host-Key': auth.hostKey }
+            let response: Response
+            try {
+                response = await doFetch(`${base}${m(code)}.ics`, { headers })
+            } catch {
+                throw new ApiError('network', 'We could not reach the server. Check your connection and try again.')
+            }
+            if (! response.ok) throw new ApiError(fallbackCode(response.status), `Request failed (${response.status}).`, response.status)
+
+            return new Blob([await response.text()], { type: 'text/calendar' })
+        },
         join: (code: string, input: JoinInput) => request<JoinResult>('POST', `${m(code)}/join`, { body: input }),
         me: (code: string, token: string) => request<Me>('GET', `${m(code)}/me`, { token }),
         waiting: (code: string, auth: HostAuth) => request<WaitingGuest[]>('GET', `${m(code)}/waiting`, { token: auth }),

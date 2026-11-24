@@ -151,20 +151,21 @@ export class MockStore {
         return [...meeting.participants.values()].filter((p) => p.state === 'admitted')
     }
 
-    present(meeting: MockMeeting) {
+    /** `withheld`: a private meeting as someone with only the link sees it (docs/api.md). */
+    present(meeting: MockMeeting, withheld = false) {
         return {
             code: meeting.code,
-            title: meeting.title,
+            title: withheld ? null : meeting.title,
             visibility: meeting.visibility,
             requiresPasscode: meeting.visibility === 'private',
             waitingRoom: meeting.waitingRoom,
             scheduledAt: meeting.scheduledAt,
             durationMin: meeting.durationMin,
             status: this.status(meeting),
-            locked: meeting.locked,
-            participantCount: this.admitted(meeting).length,
+            locked: withheld ? null : meeting.locked,
+            participantCount: withheld ? null : this.admitted(meeting).length,
             capacity: CAPACITY,
-            hostName: meeting.hostName,
+            hostName: withheld ? null : meeting.hostName,
         }
     }
 
@@ -203,7 +204,14 @@ export class MockStore {
         if (! meeting) return fail(404, 'not_found', 'There is no meeting with that code.')
 
         if (ics) return this.calendar(meeting)
-        if (method === 'GET' && rest === '') return ok(this.present(meeting))
+        if (method === 'GET' && rest === '') {
+            // A host key is checked, on any meeting; a private one is shown in full only to the host and to people who got in.
+            if (req.headers['x-host-key'] && req.headers['x-host-key'] !== meeting.hostKey) return fail(403, 'forbidden', 'That host link is not for this meeting.')
+            const asker = this.auth(req, meeting)
+            const known = asker !== null && asker.state !== 'denied' && asker.state !== 'removed'
+
+            return ok(this.present(meeting, meeting.visibility === 'private' && ! known))
+        }
         if (method === 'POST' && rest === 'join') return this.join(meeting, req.body ?? {})
 
         const me = this.auth(req, meeting)
