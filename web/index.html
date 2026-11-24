@@ -1,0 +1,25 @@
+<!doctype html>
+<html lang="en">
+    <head>
+        <meta charset="UTF-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+        <meta name="description" content="Video meetings in your browser for up to four people. Start one in a click, or schedule it for later. No account, no app." />
+        <meta name="theme-color" content="#F4EFE4" media="(prefers-color-scheme: light)" />
+        <meta name="theme-color" content="#12110D" media="(prefers-color-scheme: dark)" />
+        <meta name="referrer" content="no-referrer" />
+        <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+        <title>Holler · Video meetings for up to four</title>
+        <script>
+            // The theme someone picked, before the first paint, so a dark page never flashes light.
+            try {
+                const theme = JSON.parse(localStorage.getItem('holler:theme') || 'null')
+                if (theme === 'light' || theme === 'dark') document.documentElement.setAttribute('data-theme', theme)
+            } catch {}
+        </script>
+    </head>
+    <body>
+        <div id="app"></div>
+        <noscript>Holler needs JavaScript to run video meetings in your browser.</noscript>
+        <script type="module" src="/src/main.ts"></script>
+    </body>
+</html>
