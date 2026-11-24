@@ -1,6 +1,8 @@
 # Copy to .dev.vars (gitignored) for `npm run dev`.
-# Signs the participant tokens. Any long random string locally; in production
-# `wrangler secret put SESSION_SECRET` with `openssl rand -base64 32`.
+# Signs the participant tokens: at least 32 random characters, here and in
+# production (`openssl rand -base64 32`, then `wrangler secret put SESSION_SECRET`
+# for the deployed Worker). The Worker refuses to run with the line below as it
+# is, so that this value can never end up signing real tokens: replace it.
 SESSION_SECRET=change-me-to-a-long-random-string
 
 # Optional: Cloudflare Realtime TURN, for people behind strict NATs and firewalls.

@@ -14,7 +14,7 @@ Node 22 or newer.
 
 ```bash
 npm install
-cp .dev.vars.example .dev.vars    # SESSION_SECRET for local tokens
+cp .dev.vars.example .dev.vars    # then put a random SESSION_SECRET in it: openssl rand -base64 32
 npm run db:migrate:local          # the local D1 database
 npm run dev                       # the Worker and the built app on http://localhost:8787
 ```

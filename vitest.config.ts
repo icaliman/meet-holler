@@ -11,7 +11,7 @@ export default defineConfig(async () => {
             cloudflareTest({
                 wrangler: { configPath: './wrangler.jsonc' },
                 miniflare: {
-                    bindings: { SESSION_SECRET: 'test-session-secret', TEST_MIGRATIONS: migrations },
+                    bindings: { SESSION_SECRET: 'test-session-secret-0123456789-abcdefghij', TEST_MIGRATIONS: migrations },
                 },
             }),
         ],

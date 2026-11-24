@@ -74,9 +74,33 @@ export async function verifyPasscode(passcode: string, stored: string): Promise<
 
 export type TokenClaims = { m: string, p: string }
 
+/**
+ * A token works for a day. The participant's record is what really decides
+ * (left, removed and forgotten people are refused whatever their token says);
+ * the expiry bounds what a token copied out of a browser is worth, and no
+ * meeting of four lasts a day. Someone still there after that joins again.
+ */
+export const TOKEN_TTL_MS = 24 * 60 * 60_000
+
+const MIN_SECRET_LENGTH = 32
+/** The value in .dev.vars.example: fine on a laptop, never a secret. */
+const PLACEHOLDER_SECRET = 'change-me-to-a-long-random-string'
+
+/**
+ * SESSION_SECRET signs every token, so a missing or guessable one is every
+ * participant and every host of every meeting. Without this check a Worker
+ * deployed without the secret would sign with the text "undefined".
+ */
+function assertSecret(secret: unknown): asserts secret is string {
+    if (typeof secret !== 'string' || secret.length < MIN_SECRET_LENGTH || secret === PLACEHOLDER_SECRET) {
+        throw new Error(`SESSION_SECRET is missing, too short or still the example value: set a random secret of at least ${MIN_SECRET_LENGTH} characters (wrangler secret put SESSION_SECRET).`)
+    }
+}
+
 const keys = new Map<string, Promise<CryptoKey>>()
 
 function hmacKey(secret: string): Promise<CryptoKey> {
+    assertSecret(secret)
     let key = keys.get(secret)
     if (! key) {
         key = crypto.subtle.importKey('raw', encoder.encode(secret), { name: 'HMAC', hash: 'SHA-256' }, false, ['sign', 'verify'])
@@ -86,15 +110,21 @@ function hmacKey(secret: string): Promise<CryptoKey> {
     return key
 }
 
-/** `<payload>.<signature>`, both base64url: the meeting and the participant, signed with SESSION_SECRET. */
-export async function signToken(claims: TokenClaims, secret: string): Promise<string> {
-    const payload = base64url(encoder.encode(JSON.stringify({ m: claims.m, p: claims.p })))
+/**
+ * `<payload>.<signature>`, both base64url: the meeting, the participant and
+ * when it expires (`x`, seconds), signed with SESSION_SECRET. No role: that is
+ * read from the participant's record on every request.
+ */
+export async function signToken(claims: TokenClaims, secret: string, now = Date.now()): Promise<string> {
+    const payload = base64url(encoder.encode(JSON.stringify({ m: claims.m, p: claims.p, x: Math.floor((now + TOKEN_TTL_MS) / 1000) })))
     const signature = new Uint8Array(await crypto.subtle.sign('HMAC', await hmacKey(secret), encoder.encode(payload)))
 
     return `${payload}.${base64url(signature)}`
 }
 
-export async function verifyToken(token: string, secret: string): Promise<TokenClaims | null> {
+/** The claims of a token that is signed by us and has not expired; null for anything else. */
+export async function verifyToken(token: string, secret: string, now = Date.now()): Promise<TokenClaims | null> {
+    assertSecret(secret)
     const [payload, signature, extra] = token.split('.')
     if (! payload || ! signature || extra !== undefined) return null
 
@@ -106,6 +136,8 @@ export async function verifyToken(token: string, secret: string): Promise<TokenC
         const bytes = fromBase64url(payload)
         const claims = bytes ? JSON.parse(decoder.decode(bytes)) : null
         if (typeof claims?.m !== 'string' || typeof claims?.p !== 'string') return null
+        // An expiry we would have issued: a whole number of seconds, not passed, not further away than a token lives.
+        if (! Number.isSafeInteger(claims.x) || claims.x * 1000 <= now || claims.x * 1000 > now + TOKEN_TTL_MS + 60_000) return null
 
         return { m: claims.m, p: claims.p }
     } catch {
