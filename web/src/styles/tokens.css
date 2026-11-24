@@ -1,0 +1,114 @@
+/* Design tokens: docs/design.md is the source of truth, this file mirrors it. */
+
+:root {
+    color-scheme: light;
+
+    --bg: #F4EFE4;
+    --surface: #FFFCF5;
+    --sunken: #EAE3D3;
+    --ink: #1A1712;
+    --ink-muted: #5C5546;
+    --line: #D8CFBD;
+    --line-strong: #8A8170;
+    --volt: #D4F53C;
+    --on-volt: #1A1712;
+    --volt-text: #4D6B00;
+    --danger: #C8361C;
+    --on-danger: #FFFFFF;
+    --focus: #1A1712;
+    --volt-outline: var(--ink);
+    --lift: 0 4px 0 var(--ink);
+    --lift-pressed: 0 2px 0 var(--ink);
+    --shadow-float: 0 18px 40px -12px rgb(26 23 18 / 0.35);
+
+    --seat-0: #D4F53C;
+    --seat-1: #B8A3FF;
+    --seat-2: #74D0F5;
+    --seat-3: #FFAE82;
+
+    --stage: #0B0A08;
+    --tile: #1F1C17;
+
+    --font-display: 'Bricolage Grotesque Variable', ui-sans-serif, system-ui, sans-serif;
+    --font-text: 'Atkinson Hyperlegible', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif;
+    --font-mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+
+    --text-hero: clamp(2.75rem, 1.6rem + 4.6vw, 4.75rem);
+    --text-xl: clamp(1.875rem, 1.5rem + 1.6vw, 2.75rem);
+    --text-lg: clamp(1.25rem, 1.15rem + 0.45vw, 1.5rem);
+    --text-md: 1.0625rem;
+    --text-sm: 0.875rem;
+
+    --s-1: 4px;
+    --s-2: 8px;
+    --s-3: 12px;
+    --s-4: 16px;
+    --s-5: 24px;
+    --s-6: 32px;
+    --s-7: 48px;
+    --s-8: 72px;
+
+    --r-sm: 10px;
+    --r-md: 18px;
+    --r-lg: 28px;
+    --r-pill: 999px;
+
+    --ease-out: cubic-bezier(.2, .8, .2, 1);
+    --ease-spring: cubic-bezier(.34, 1.56, .64, 1);
+    --t-fast: 120ms;
+    --t-med: 240ms;
+    --t-slow: 480ms;
+
+    --gutter: 16px;
+    --content: 1120px;
+}
+
+@media (min-width: 768px) {
+    :root { --gutter: 32px; }
+}
+
+/* Dark: the system's choice unless the person picked light, or picked dark themselves. */
+@media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+        color-scheme: dark;
+        --bg: #12110D;
+        --surface: #1C1A15;
+        --sunken: #0B0A08;
+        --ink: #F4EFE4;
+        --ink-muted: #A9A08E;
+        --line: #34302A;
+        --line-strong: #6D6658;
+        --on-volt: #12110D;
+        --volt-text: #D4F53C;
+        --danger: #FF6B4A;
+        --on-danger: #12110D;
+        --focus: #D4F53C;
+        --volt-outline: transparent;
+        --lift: inset 0 -3px 0 rgb(0 0 0 / 0.25);
+        --lift-pressed: inset 0 -1px 0 rgb(0 0 0 / 0.25);
+        --shadow-float: 0 18px 40px -12px rgb(0 0 0 / 0.7);
+        --mark-bg: #2B2821;
+    }
+}
+
+:root[data-theme="dark"],
+.stage-palette {
+    color-scheme: dark;
+    --bg: #12110D;
+    --surface: #1C1A15;
+    --sunken: #0B0A08;
+    --ink: #F4EFE4;
+    --ink-muted: #A9A08E;
+    --line: #34302A;
+    --line-strong: #6D6658;
+    --on-volt: #12110D;
+    --volt-text: #D4F53C;
+    --danger: #FF6B4A;
+    --on-danger: #12110D;
+    --focus: #D4F53C;
+    --volt-outline: transparent;
+    --lift: inset 0 -3px 0 rgb(0 0 0 / 0.25);
+    --lift-pressed: inset 0 -1px 0 rgb(0 0 0 / 0.25);
+    --shadow-float: 0 18px 40px -12px rgb(0 0 0 / 0.7);
+    --mark-bg: #2B2821;
+}
