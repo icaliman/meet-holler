@@ -82,11 +82,11 @@ Every message is checked before it changes anything; anything that fails a check
 3. The sender is in my roster and is not me; `s` is the person sharing now.
 4. While the sharer has turned the others off, a `ptr` or `stroke` from anyone but the sharer is dropped, whatever the sender's own app thinks.
 5. `cfg` counts only from the sharer about their own share.
-6. `clear` with `all` clears everyone's marks when it comes from the sharer, or says `host`; otherwise it clears only the sender's.
+6. `clear` with `all` clears everyone's marks when it comes from the sharer, or says `host` **and the sender is the host in my roster**; otherwise it clears only the sender's. `host` in a message is a claim, never proof.
 7. A stroke keeps its tool, stops growing at 1500 points, and cannot be changed once it ended. One person has at most 30 marks on screen (the oldest goes). A stroke whose author goes quiet for 5 s counts as finished, so a dropped connection cannot leave a half line forever.
 8. Names come from the roster and are rendered as text (Svelte escapes them); `displayName` also strips control and direction-changing characters and caps them at 40 characters.
 
-**Known gap: the host.** The Worker does not tell guests who the host is (`peers` in the poll has no `role`), so a receiver cannot check a `host: true` claim. A modified client could clear everyone's marks by claiming it; it cannot draw, point or change the sharer's setting that way, and marks fade in seconds anyway. Adding `role` to `peers` in `worker/holler/present.ts` (and passing it through to the roster) would let receivers verify it.
+**Who the host is.** The Worker says it: every entry of `peers` in the Holler poll has `role` (`host` or `guest`), taken from the participant's record, which only joining with the meeting's `hostKey` sets ([api.md](api.md#the-call-as-each-participant-sees-it)). The room keeps those roles (`rolesIn` in `web/src/lib/holler.ts`) and hands them to the roster as `host`; nothing a peer sends over the data channel can change them. A backend that sends no `role` names nobody: the sharer's "clear all" still works, a host's then clears only the host's own marks on the others' screens.
 
 ### Changing the protocol
 

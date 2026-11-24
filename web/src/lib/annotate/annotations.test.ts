@@ -14,7 +14,7 @@ const PEOPLE = [
  * Three people whose wires deliver to each other at once, a frame queue for the outgoing
  * messages, and every message on the wire in `log`.
  */
-function meeting({ sharer = 'ana', host = 'ion' } = {}) {
+function meeting({ sharer = 'ana', host = 'ion', roles = true } = {}) {
     const handlers = new Map<string, WireHandlers>()
     const log: { from: string, to: string, message: Message }[] = []
     let queue: (() => void)[] = []
@@ -41,7 +41,8 @@ function meeting({ sharer = 'ana', host = 'ion' } = {}) {
             return () => handlers.delete(me)
         },
     })
-    const roster = (me: string, sharing: string | null): Who[] => PEOPLE.map((p) => ({ ...p, me: p.id === me, sharing: p.id === sharing }))
+    // `roles: false` is a backend that sends no role: nobody is named the host.
+    const roster = (me: string, sharing: string | null): Who[] => PEOPLE.map((p) => ({ ...p, me: p.id === me, sharing: p.id === sharing, ...(roles ? { host: p.id === host } : {}) }))
     const make = (id: string) => {
         const a = new Annotations({ wire: wireFor(id), me: { id, isHost: id === host }, timing, announce: (text) => said.push(`${id}: ${text}`), reducedMotion: () => false })
         a.rosterChanged(roster(id, null))
@@ -308,6 +309,32 @@ describe('clearing marks', () => {
     it('lets the host clear everyone\'s', () => {
         expect(m.ion.canClearAll).toBe(true)
         m.ion.clear()
+        for (const a of [m.ion, m.ana, m.mihai]) expect(a.marks).toEqual([])
+    })
+
+    it('takes a guest claiming to be the host for a guest: only their own marks go', () => {
+        m.forge(m.ana, 'mihai', { v: 1, t: 'clear', s: 'ana', all: true, host: true })
+        expect(m.ana.marks.map((x) => x.from).sort()).toEqual(['ana', 'ion'])
+        expect(m.said).not.toContain('ana: Mihai cleared all marks.')
+
+        m.forge(m.ion, 'mihai', { v: 1, t: 'clear', s: 'ana', all: true, host: true })
+        expect(m.ion.marks.map((x) => x.from).sort()).toEqual(['ana', 'ion'])
+    })
+
+    it('honours no host claim when the backend names no roles, and still lets the sharer clear', () => {
+        m.destroy()
+        m = meeting({ host: 'ion', roles: false })
+        for (const who of [m.ion, m.mihai, m.ana]) {
+            who.setTool('pen')
+            who.begin({ x: 0.5, y: 0.5 })
+            who.end()
+        }
+
+        m.ion.clear()
+        expect(m.ion.marks).toEqual([])
+        expect(m.mihai.marks.map((x) => x.from).sort()).toEqual(['ana', 'mihai'])
+
+        m.ana.clear()
         for (const a of [m.ion, m.ana, m.mihai]) expect(a.marks).toEqual([])
     })
 

@@ -5,7 +5,7 @@ import type { CallClient, CallState, DeviceKind, DeviceList, Peer } from '@packs
 import { Annotations } from '../annotate/annotations.svelte'
 import { hollerWire } from '../annotate/wire'
 import { api } from '../api'
-import { clientFor, type PollMeeting } from '../holler'
+import { clientFor, type PollMeeting, type Role } from '../holler'
 import { announce } from '../ui/announce.svelte'
 import { dismiss, toast } from '../ui/toast-store.svelte'
 import type { Participant, WaitingGuest } from '../types'
@@ -66,6 +66,7 @@ export class Room implements RoomLike {
     readonly canShare = typeof navigator !== 'undefined' && typeof navigator.mediaDevices?.getDisplayMedia === 'function'
 
     private client: CallClient
+    private roles = new Map<string, Role>()
     private me: Participant
     private bearer: string
     private meter: LevelMeter
@@ -95,6 +96,7 @@ export class Room implements RoomLike {
             video: this.hasCamera,
             devices: options.devices,
             onMeeting: (meeting) => this.meetingChanged(meeting),
+            onRoles: (roles) => this.rolesChanged(roles),
         })
         this.meter = new LevelMeter((voices) => { this.voices = voices })
         this.annotations = new Annotations({ wire: hollerWire(this.client), me: { id: options.me.id, isHost: this.isHost } })
@@ -157,6 +159,21 @@ export class Room implements RoomLike {
         })
     }
 
+    /**
+     * Who the Worker names as host or guest (`role` in the poll's `peers`). Only ever the
+     * Worker's word, never a peer's: it decides whose "clear all" counts (docs/annotations.md).
+     * A role does not change, so a poll that leaves someone out forgets nothing.
+     */
+    private rolesChanged(roles: Map<string, Role>): void {
+        let changed = false
+        for (const [id, role] of roles) {
+            if (this.roles.get(id) === role) continue
+            this.roles.set(id, role)
+            changed = true
+        }
+        if (changed) this.sync()
+    }
+
     /** The roster from the client, me first. */
     private sync(): void {
         const c = this.client
@@ -190,7 +207,7 @@ export class Room implements RoomLike {
                 quality: p.quality,
             }))
         this.people = [mine, ...others]
-        this.annotations.rosterChanged(this.people.map(({ id, name, seat, me, sharing }) => ({ id, name, seat, me, sharing })))
+        this.annotations.rosterChanged(this.people.map(({ id, name, seat, me, sharing }) => ({ id, name, seat, me, sharing, host: me ? this.isHost : this.roles.get(id) === 'host' })))
         this.muted = c.muted
         this.cameraOff = c.cameraOff
         this.sharing = c.sharing
