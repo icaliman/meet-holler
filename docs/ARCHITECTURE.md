@@ -19,7 +19,7 @@ Directory ownership keeps parallel PRs apart: `worker/`, `migrations/`, `wrangle
 - **Public**: anyone with the link can join. **Private**: the link plus a passcode the host sets.
 - **Waiting room** (optional, either visibility): guests wait until the host admits or denies them; host can toggle it live and lock the meeting.
 - No accounts. A guest gives a display name. The creator gets a secret `hostKey`, kept in localStorage and carried in the host link, which makes them host from any device.
-- **Remote control v1 = pointer + annotations**: while someone shares their screen, everyone can show a laser pointer and draw ephemeral marks on it, sent over a Holler data channel. A browser cannot inject input on another machine, so real remote control is out of scope.
+- **Remote control v1 = pointer + annotations**: while someone shares their screen, everyone can show a laser pointer and draw ephemeral marks on it, sent over a Holler data channel ([annotations.md](annotations.md)). A browser cannot inject input on another machine, so real remote control is out of scope.
 - Capacity: 4 per meeting (holler-js mesh). Say it plainly in the UI when full.
 
 ## Meeting codes
