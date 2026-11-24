@@ -8,6 +8,27 @@ Built on [`@packstub/holler`](https://github.com/packstub/holler-js) (the WebRTC
 
 See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for how it fits together.
 
+## Development
+
+Node 22 or newer.
+
+```bash
+npm install
+cp .dev.vars.example .dev.vars    # SESSION_SECRET for local tokens
+npm run db:migrate:local          # the local D1 database
+npm run dev                       # the Worker and the built app on http://localhost:8787
+```
+
+| Script | Does |
+| --- | --- |
+| `npm run dev` | `wrangler dev`: the API and whatever is in `web/dist` |
+| `npm run build` | builds the Svelte app into `web/dist` (once `web/` exists) |
+| `npm test` | the Worker's tests, inside workerd against a local D1 |
+| `npm run typecheck` | the Worker's TypeScript, and that `worker-configuration.d.ts` matches `wrangler.jsonc` (`npm run types` regenerates it) |
+| `npm run deploy` | build and `wrangler deploy` |
+
+The API is described in [docs/api.md](docs/api.md), with the free-plan budget.
+
 ## License
 
 MIT
