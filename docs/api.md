@@ -42,6 +42,10 @@ The Worker's JSON API, everything under `/api/*`. [ARCHITECTURE.md](ARCHITECTURE
 
 The host is whoever joins with the meeting's `hostKey`. Host routes accept either the host's token (`Authorization: Bearer`) or the key itself (`X-Host-Key: <hostKey>`), so host controls also work from a page that has not joined.
 
+**Same origin only.** The API is for the app served from the same origin. It sends no CORS headers, so a page on another origin cannot read an answer, and it refuses (`403 forbidden`) any request that changes something (everything but `GET`) whose `Origin` is another origin or whose `Sec-Fetch-Site` is `cross-site`. A client that sends neither header (a script, `curl`) is not affected. JSON bodies must be sent as `Content-Type: application/json` (`422 invalid` otherwise). There are no cookies.
+
+**Headers on every answer:** `Cache-Control: no-store`, `X-Content-Type-Options: nosniff`, `Referrer-Policy: no-referrer`, `X-Frame-Options: DENY`, `Cross-Origin-Resource-Policy: same-origin` and a `Content-Security-Policy` that allows nothing (`default-src 'none'; frame-ancestors 'none'`). The pages get theirs (the app's Content-Security-Policy, `Permissions-Policy` for the camera, the microphone and screen capture) from `web/public/_headers`.
+
 **Rate limits** (per IP address, per Worker instance, so they are a brake, not a wall): creating meetings 20 per 10 minutes, joining 30 per minute, everything else 600 per minute. Wrong passcodes are counted per meeting in D1: after 10 in 15 minutes the meeting answers `rate_limited` to every passcode until the window passes.
 
 ## Meetings
