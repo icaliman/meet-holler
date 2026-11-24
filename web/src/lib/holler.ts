@@ -14,6 +14,27 @@ export interface PollMeeting {
     waiting?: WaitingGuest[]
 }
 
+export type Role = 'host' | 'guest'
+
+/**
+ * Who the Worker says is the host and who a guest, by participant id, from a poll's answer
+ * (`role` on each entry of `peers`). The engine's roster does not carry the field, so the
+ * room reads it here. Optional on the wire: a backend that sends no role names nobody, and
+ * then nobody is taken for the host.
+ */
+export function rolesIn(answer: unknown): Map<string, Role> {
+    const roles = new Map<string, Role>()
+    const data = (answer ?? {}) as Record<string, { peers?: unknown } | null | undefined>
+    for (const call of [data.call, data.incoming, data.on_hold]) {
+        if (! Array.isArray(call?.peers)) continue
+        for (const peer of call.peers as Array<{ id?: unknown, role?: unknown } | null>) {
+            if (peer && (typeof peer.id === 'string' || typeof peer.id === 'number') && (peer.role === 'host' || peer.role === 'guest')) roles.set(String(peer.id), peer.role)
+        }
+    }
+
+    return roles
+}
+
 /** The data channel for the pointer and drawings on a shared screen (#6): every client lists it, in this order. */
 export const CHANNELS = ['annotations']
 
@@ -42,12 +63,13 @@ export function routes(code: string): HttpSignalingRoutes {
  * answer (HttpSignaling itself only passes the call on), so the room needs no second poll
  * for the lock, the waiting room or the host's waiting list.
  */
-export function signalingFor(code: string, token: string, onMeeting?: (meeting: PollMeeting) => void, fetchFn: typeof fetch = (...args) => globalThis.fetch(...args)): HttpSignaling {
+export function signalingFor(code: string, token: string, onMeeting?: (meeting: PollMeeting) => void, fetchFn: typeof fetch = (...args) => globalThis.fetch(...args), onRoles?: (roles: Map<string, Role>) => void): HttpSignaling {
     const peek: typeof fetch = async (input, init) => {
         const response = await fetchFn(input, init)
-        if (onMeeting && String(input).includes('/holler/poll') && response.ok) {
+        if ((onMeeting || onRoles) && String(input).includes('/holler/poll') && response.ok) {
             response.clone().json().then((data) => {
-                if (data?.meeting) onMeeting(data.meeting as PollMeeting)
+                if (data?.meeting) onMeeting?.(data.meeting as PollMeeting)
+                onRoles?.(rolesIn(data))
             }).catch(() => {})
         }
 
@@ -67,6 +89,8 @@ export interface ClientOptions {
     code: string
     token: string
     onMeeting?: (meeting: PollMeeting) => void
+    /** The roles the Worker names in each poll (see `rolesIn`). */
+    onRoles?: (roles: Map<string, Role>) => void
     /** The lobby's camera and microphone, handed over so the browser does not ask twice. */
     stream?: MediaStream | null
     video?: boolean
@@ -74,8 +98,8 @@ export interface ClientOptions {
     fetch?: typeof fetch
 }
 
-export function clientFor({ code, token, onMeeting, stream = null, video = true, devices = {}, fetch: fetchFn }: ClientOptions): CallClient {
-    const signaling = signalingFor(code, token, onMeeting, fetchFn)
+export function clientFor({ code, token, onMeeting, onRoles, stream = null, video = true, devices = {}, fetch: fetchFn }: ClientOptions): CallClient {
+    const signaling = signalingFor(code, token, onMeeting, fetchFn, onRoles)
     let handed = stream
 
     const client = new CallClient({

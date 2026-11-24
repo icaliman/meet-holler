@@ -59,6 +59,7 @@ export function installHoller(store: MockStore): void {
                 name: p.name,
                 avatar: null,
                 seat: p.seat,
+                role: p.role === 'host' ? 'host' : 'guest',
                 status: p.state === 'left' ? 'left' : p.joined ? 'joined' : 'ringing',
                 claimed: Boolean(p.tab) && now - p.seenAt < SIDE_FREE_MS,
                 seen_ago: Math.floor((now - p.seenAt) / 1000),

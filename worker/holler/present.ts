@@ -48,6 +48,8 @@ export function presentCall(meeting: MeetingRow, participants: ParticipantRow[],
             name: p.name,
             avatar: null,
             seat: p.seat,
+            // From the participant's row, which only /join writes (from the hostKey): never from anything a client sends.
+            role: p.role === 'host' ? 'host' as const : 'guest' as const,
             status: p.status === 'removed' ? 'left' : p.status,
             claimed: isClaimed(p, now),
             seen_ago: seenAgo(p, now),

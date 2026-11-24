@@ -124,7 +124,7 @@ export class DemoRoom implements RoomLike {
     }
 
     private syncMarks() {
-        this.annotations.rosterChanged(this.people.map(({ id, name, seat, me, sharing }) => ({ id, name, seat, me, sharing })))
+        this.annotations.rosterChanged(this.people.map(({ id, name, seat, me, sharing }) => ({ id, name, seat, me, sharing, host: me })))
     }
 
     /** Ana (sharing) points around the slide, Mihai circles a line and draws an arrow to it. */

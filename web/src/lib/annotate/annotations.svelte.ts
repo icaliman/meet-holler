@@ -17,6 +17,11 @@ export interface Who {
     seat: number
     me: boolean
     sharing: boolean
+    /**
+     * The Worker names them the host (`role` in the poll's `peers`). Never from a message:
+     * absent or false, their "clear all" as host is not honoured.
+     */
+    host?: boolean
 }
 
 export interface Mark {
@@ -320,7 +325,9 @@ export class Annotations {
                 return
             }
             case 'clear':
-                if (message.all && (fromSharer || message.host)) {
+                // `host` in the message is only a claim: it counts when the roster, which comes
+                // from the Worker, says the sender is the host.
+                if (message.all && (fromSharer || (message.host === true && who.host === true))) {
                     if (this.drawing) this.end()
                     this.marks = []
                     this.say(`${name} cleared all marks.`)
