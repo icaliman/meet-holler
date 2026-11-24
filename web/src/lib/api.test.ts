@@ -19,7 +19,7 @@ describe('api client against the contract (dev mock)', () => {
 
         const joined = await api.join(meeting.code, { name: 'Ion', hostKey })
         expect(joined.participant).toMatchObject({ name: 'Ion', role: 'host', state: 'admitted' })
-        expect(await api.me(meeting.code, joined.token)).toMatchObject({ role: 'host' })
+        expect((await api.me(meeting.code, joined.token)).participant).toMatchObject({ role: 'host' })
     })
 
     it('runs the waiting room: a guest waits, the host admits', async () => {
@@ -31,7 +31,7 @@ describe('api client against the contract (dev mock)', () => {
         const waiting = await api.waiting(meeting.code, host.token)
         expect(waiting.map((w) => w.name)).toEqual(['Ana'])
         await api.admit(meeting.code, waiting[0].id, host.token)
-        expect((await api.me(meeting.code, guest.token)).state).toBe('admitted')
+        expect((await api.me(meeting.code, guest.token)).participant.state).toBe('admitted')
     })
 
     it('turns error bodies into ApiError with the code', async () => {
@@ -40,7 +40,9 @@ describe('api client against the contract (dev mock)', () => {
         await expect(api.join('xxxfuuuuuu', { name: 'Ana' })).rejects.toMatchObject({ code: 'full' })
         await expect(api.join('xxxpassxxx', { name: 'Ana' })).rejects.toMatchObject({ code: 'passcode_required' })
         await expect(api.join('xxxpassxxx', { name: 'Ana', passcode: '9' })).rejects.toMatchObject({ code: 'passcode_wrong' })
-        await expect(api.join('xxxxxckxxx', { name: 'Ana' })).rejects.toMatchObject({ code: 'locked' })
+        await expect(api.join('xxxxxckxxx', { name: 'Ana' })).rejects.toMatchObject({ code: 'locked', status: 423 })
+        await expect(api.join('xxxsxhedxx', { name: 'Ana' })).rejects.toMatchObject({ code: 'not_started' })
+        await expect(api.join('xxxsxhedxx', { name: 'Ana', hostKey: 'wrong' })).rejects.toMatchObject({ code: 'forbidden' })
     })
 
     it('reports a request that never got an answer as network', async () => {
@@ -56,6 +58,7 @@ describe('api client against the contract (dev mock)', () => {
         const guest = await api.join(meeting.code, { name: 'Ana' })
 
         await expect(api.update(meeting.code, { locked: true }, guest.token)).rejects.toMatchObject({ code: 'forbidden' })
-        expect((await api.update(meeting.code, { locked: true }, host.token)).locked).toBe(true)
+        expect((await api.update(meeting.code, { locked: true }, host.token)).meeting.locked).toBe(true)
+        expect((await api.update(meeting.code, { locked: false }, { hostKey })).meeting.locked).toBe(false)
     })
 })

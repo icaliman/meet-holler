@@ -1,4 +1,4 @@
-// An in-memory stand-in for the Worker's meetings API (docs/ARCHITECTURE.md, "HTTP API"),
+// An in-memory stand-in for the Worker's meetings API (docs/api.md),
 // for `npm run dev` only: it never ships. It follows the contract, not the Worker's code,
 // so where they differ the Worker wins and this file is fixed.
 //
@@ -26,6 +26,7 @@ export interface MockParticipant {
 export interface MockMeeting {
     code: string
     title: string | null
+    hostName: string | null
     visibility: 'public' | 'private'
     passcode: string | null
     waitingRoom: boolean
@@ -59,7 +60,8 @@ const CAPACITY = 4
 /** Guests may come in this long before the start; earlier they see a countdown. */
 const EARLY_MS = 5 * 60 * 1000
 
-const fail = (status: number, code: string, message: string): MockResponse => ({ status, body: { error: { code, message } } })
+// Errors carry `message` and `reason` at the top level too, as the Worker's do, for HttpSignaling.
+const fail = (status: number, code: string, message: string, reason: string = code): MockResponse => ({ status, body: { error: { code, message }, message, reason } })
 const ok = (body: unknown, status = 200): MockResponse => ({ status, body })
 
 export class MockStore {
@@ -92,6 +94,7 @@ export class MockStore {
         const meeting: MockMeeting = {
             code: input.code ?? this.newCode(),
             title: input.title ?? null,
+            hostName: input.hostName ?? null,
             visibility: input.visibility ?? 'public',
             passcode: input.passcode ?? null,
             waitingRoom: input.waitingRoom ?? false,
@@ -161,6 +164,7 @@ export class MockStore {
             locked: meeting.locked,
             participantCount: this.admitted(meeting).length,
             capacity: CAPACITY,
+            hostName: meeting.hostName,
         }
     }
 
@@ -170,6 +174,11 @@ export class MockStore {
 
     /** The participant a bearer token (or a `token` form field, for the leave beacon) names on this meeting. */
     auth(req: MockRequest, meeting: MockMeeting): MockParticipant | null {
+        // Host routes also take the host key itself (X-Host-Key), from a page that has not joined.
+        if (req.headers['x-host-key'] && req.headers['x-host-key'] === meeting.hostKey) {
+            return [...meeting.participants.values()].find((p) => p.role === 'host')
+                ?? { id: 'host-key', name: 'Host', role: 'host', state: 'admitted', since: '', seat: -1, joined: false, tab: null, seenAt: 0 }
+        }
         const header = req.headers.authorization ?? ''
         const token = header.startsWith('Bearer ') ? header.slice(7) : (req.body?.token ?? '')
         const [, code, id] = /^mock\.([^.]+)\.(.+)$/.exec(String(token)) ?? []
@@ -199,9 +208,10 @@ export class MockStore {
 
         const me = this.auth(req, meeting)
         if (! me) return fail(401, 'forbidden', 'Join the meeting first.')
-        if (method === 'GET' && rest === 'me') return ok(this.participant(me))
+        if (method === 'GET' && rest === 'me') return ok({ participant: this.participant(me), meeting: this.present(meeting) })
 
         if (me.role !== 'host') return fail(403, 'forbidden', 'Only the host can do that.')
+        if (meeting.ended && method !== 'GET') return fail(410, 'ended', 'This meeting has ended.')
         if (method === 'GET' && rest === 'waiting') {
             return ok([...meeting.participants.values()].filter((p) => p.state === 'waiting').map(({ id, name, since }) => ({ id, name, since })))
         }
@@ -209,7 +219,8 @@ export class MockStore {
         const waiting = /^waiting\/([^/]+)\/(admit|deny)$/.exec(rest)
         if (method === 'POST' && waiting) {
             const guest = meeting.participants.get(waiting[1])
-            if (! guest || guest.state !== 'waiting') return fail(404, 'not_found', 'That guest is no longer waiting.')
+            if (! guest) return fail(404, 'not_found', 'No such participant.')
+            if (guest.state !== 'waiting') return fail(409, 'invalid', 'That guest is no longer waiting.')
             if (waiting[2] === 'admit') {
                 if (this.admitted(meeting).length >= CAPACITY) return fail(409, 'full', 'The meeting is full.')
                 guest.state = 'admitted'
@@ -218,32 +229,42 @@ export class MockStore {
                 guest.state = 'denied'
             }
 
-            return ok(this.participant(guest))
+            return ok({ participant: this.participant(guest) })
         }
 
         if (method === 'PATCH' && rest === '') {
             const { waitingRoom, locked, title } = req.body ?? {}
             if (typeof waitingRoom === 'boolean') meeting.waitingRoom = waitingRoom
+            // Turning the waiting room off lets the waiting guests in, oldest first, while there is room.
+            if (waitingRoom === false) {
+                for (const guest of meeting.participants.values()) {
+                    if (guest.state === 'waiting' && this.admitted(meeting).length < CAPACITY) {
+                        guest.state = 'admitted'
+                        guest.seat = meeting.nextSeat++
+                    }
+                }
+            }
             if (typeof locked === 'boolean') meeting.locked = locked
             if (typeof title === 'string') meeting.title = title.trim() || null
 
-            return ok(this.present(meeting))
+            return ok({ meeting: this.present(meeting) })
         }
 
         if (method === 'POST' && rest === 'end') {
             meeting.ended = true
 
-            return ok(this.present(meeting))
+            return ok({ meeting: this.present(meeting) })
         }
 
         const remove = /^remove\/([^/]+)$/.exec(rest)
         if (method === 'POST' && remove) {
             const guest = meeting.participants.get(remove[1])
             if (! guest) return fail(404, 'not_found', 'That person is not in the meeting.')
+            if (guest.role === 'host') return fail(422, 'invalid', 'The host cannot remove themselves.')
             guest.state = 'removed'
             guest.joined = false
 
-            return ok(this.participant(guest))
+            return ok({ participant: this.participant(guest) })
         }
 
         return fail(404, 'not_found', 'No such route.')
@@ -260,6 +281,7 @@ export class MockStore {
 
         const meeting = this.create({
             title: String(body.title ?? '').trim() || null,
+            hostName: String(body.hostName ?? '').trim() || null,
             visibility: body.visibility,
             passcode: body.visibility === 'private' ? String(body.passcode) : null,
             waitingRoom: Boolean(body.waitingRoom),
@@ -275,14 +297,15 @@ export class MockStore {
         if (! name) return fail(422, 'invalid', 'Tell us your name.')
         if (meeting.ended) return fail(410, 'ended', 'This meeting has ended.')
 
-        const isHost = Boolean(body.hostKey) && body.hostKey === meeting.hostKey
+        if (body.hostKey && body.hostKey !== meeting.hostKey) return fail(403, 'forbidden', 'That host link is not for this meeting.')
+        const isHost = Boolean(body.hostKey)
         if (! isHost) {
-            if (this.status(meeting) === 'scheduled') return fail(409, 'invalid', 'This meeting has not started yet.')
-            if (meeting.locked) return fail(403, 'locked', 'The host has locked this meeting.')
             if (meeting.visibility === 'private') {
                 if (! body.passcode) return fail(401, 'passcode_required', 'This meeting needs a passcode.')
-                if (String(body.passcode) !== meeting.passcode) return fail(403, 'passcode_wrong', 'That passcode is not right.')
+                if (String(body.passcode) !== meeting.passcode) return fail(401, 'passcode_wrong', 'That passcode is not right.')
             }
+            if (this.status(meeting) === 'scheduled') return fail(409, 'not_started', 'This meeting has not started yet.')
+            if (meeting.locked) return fail(423, 'locked', 'The host has locked this meeting.')
         }
         if (this.admitted(meeting).length >= CAPACITY) return fail(409, 'full', 'The meeting is full.')
 
@@ -290,7 +313,7 @@ export class MockStore {
         const waits = ! isHost && meeting.waitingRoom
         const participant = this.addParticipant(meeting, name.slice(0, 40), isHost ? 'host' : 'guest', waits ? 'waiting' : 'admitted')
 
-        return ok({ token: this.token(meeting, participant), participant: this.participant(participant) }, 201)
+        return ok({ token: this.token(meeting, participant), participant: this.participant(participant), meeting: this.present(meeting) }, 201)
     }
 
     calendar(meeting: MockMeeting): MockResponse {

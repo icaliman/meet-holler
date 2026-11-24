@@ -13,6 +13,7 @@ export function explain(error: unknown): string {
         case 'locked': return 'The host has locked this meeting. Ask them to unlock it.'
         case 'passcode_required': return 'This meeting is private. Enter the passcode the host gave you.'
         case 'passcode_wrong': return "That passcode doesn't match. Check with the host and try again."
+        case 'not_started': return "This meeting hasn't started yet. It opens at its start time, or when the host opens it."
         case 'rate_limited': return 'Too many tries in a short time. Wait a minute, then try again.'
         case 'forbidden': return "You can't do that in this meeting."
         case 'invalid': return error.message || 'Something in the form is not right. Check it and try again.'

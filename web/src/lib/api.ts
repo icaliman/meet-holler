@@ -7,6 +7,7 @@ import type {
     ErrorCode,
     JoinInput,
     JoinResult,
+    Me,
     Meeting,
     MeetingPatch,
     Participant,
@@ -27,6 +28,9 @@ export class ApiError extends Error {
 
 type Fetch = typeof fetch
 
+/** Who a host route is for: the host's participant token, or the host key itself (a page that has not joined). */
+export type HostAuth = string | { hostKey: string }
+
 export interface ApiOptions {
     base?: string
     fetch?: Fetch
@@ -35,10 +39,11 @@ export interface ApiOptions {
 export function createApi({ base = '', fetch: fetchFn }: ApiOptions = {}) {
     const doFetch: Fetch = fetchFn ?? ((...args) => globalThis.fetch(...args))
 
-    async function request<T>(method: string, path: string, { body, token }: { body?: unknown, token?: string } = {}): Promise<T> {
+    async function request<T>(method: string, path: string, { body, token }: { body?: unknown, token?: HostAuth } = {}): Promise<T> {
         const headers: Record<string, string> = { Accept: 'application/json' }
         if (body !== undefined) headers['Content-Type'] = 'application/json'
-        if (token) headers.Authorization = `Bearer ${token}`
+        if (typeof token === 'string') headers.Authorization = `Bearer ${token}`
+        else if (token?.hostKey) headers['X-Host-Key'] = token.hostKey
 
         let response: Response
         try {
@@ -74,13 +79,13 @@ export function createApi({ base = '', fetch: fetchFn }: ApiOptions = {}) {
         getMeeting: (code: string) => request<Meeting>('GET', m(code)),
         icsUrl: (code: string) => `${base}${m(code)}.ics`,
         join: (code: string, input: JoinInput) => request<JoinResult>('POST', `${m(code)}/join`, { body: input }),
-        me: (code: string, token: string) => request<Participant>('GET', `${m(code)}/me`, { token }),
-        waiting: (code: string, token: string) => request<WaitingGuest[]>('GET', `${m(code)}/waiting`, { token }),
-        admit: (code: string, id: string, token: string) => request<unknown>('POST', `${m(code)}/waiting/${encodeURIComponent(id)}/admit`, { token }),
-        deny: (code: string, id: string, token: string) => request<unknown>('POST', `${m(code)}/waiting/${encodeURIComponent(id)}/deny`, { token }),
-        update: (code: string, patch: MeetingPatch, token: string) => request<Meeting>('PATCH', m(code), { body: patch, token }),
-        end: (code: string, token: string) => request<unknown>('POST', `${m(code)}/end`, { token }),
-        remove: (code: string, id: string, token: string) => request<unknown>('POST', `${m(code)}/remove/${encodeURIComponent(id)}`, { token }),
+        me: (code: string, token: string) => request<Me>('GET', `${m(code)}/me`, { token }),
+        waiting: (code: string, auth: HostAuth) => request<WaitingGuest[]>('GET', `${m(code)}/waiting`, { token: auth }),
+        admit: (code: string, id: string, auth: HostAuth) => request<{ participant: Participant }>('POST', `${m(code)}/waiting/${encodeURIComponent(id)}/admit`, { token: auth }),
+        deny: (code: string, id: string, auth: HostAuth) => request<{ participant: Participant }>('POST', `${m(code)}/waiting/${encodeURIComponent(id)}/deny`, { token: auth }),
+        update: (code: string, patch: MeetingPatch, auth: HostAuth) => request<{ meeting: Meeting }>('PATCH', m(code), { body: patch, token: auth }),
+        end: (code: string, auth: HostAuth) => request<{ meeting: Meeting }>('POST', `${m(code)}/end`, { token: auth }),
+        remove: (code: string, id: string, auth: HostAuth) => request<{ participant: Participant }>('POST', `${m(code)}/remove/${encodeURIComponent(id)}`, { token: auth }),
     }
 }
 
@@ -88,8 +93,8 @@ function fallbackCode(status: number): ErrorCode {
     if (status === 404) return 'not_found'
     if (status === 403 || status === 401) return 'forbidden'
     if (status === 410) return 'ended'
+    if (status === 423) return 'locked'
     if (status === 429) return 'rate_limited'
-    if (status === 409) return 'full'
 
     return 'invalid'
 }

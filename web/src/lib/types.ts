@@ -15,6 +15,7 @@ export type ErrorCode =
     | 'ended'
     | 'invalid'
     | 'rate_limited'
+    | 'not_started'
     | 'network'
 
 /** Public information about a meeting: `GET /api/meetings/:code`. */
@@ -30,6 +31,7 @@ export interface Meeting {
     locked: boolean
     participantCount: number
     capacity: number
+    hostName?: string | null
 }
 
 export interface CreateMeetingInput {
@@ -63,6 +65,13 @@ export interface JoinInput {
 export interface JoinResult {
     token: string
     participant: Participant
+    meeting?: Meeting
+}
+
+/** `GET /me`: where I stand, and the meeting as it is now. */
+export interface Me {
+    participant: Participant
+    meeting: Meeting
 }
 
 export interface WaitingGuest {

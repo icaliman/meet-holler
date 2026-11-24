@@ -7,6 +7,7 @@ describe('routes', () => {
         expect(match('/abc-defg-hjk')).toEqual({ name: 'meeting', code: 'abcdefghjk' })
         expect(match('/ABCDEFGHJK')).toEqual({ name: 'meeting', code: 'abcdefghjk' })
         expect(match('/abc-defg-hjk/ready')).toEqual({ name: 'ready', code: 'abcdefghjk' })
+        expect(match('/m/abc-defg-hjk')).toEqual({ name: 'meeting', code: 'abcdefghjk' })
         expect(match('/abc-defg-hjk/other')).toEqual({ name: 'missing' })
         expect(match('/about')).toEqual({ name: 'missing' })
     })
