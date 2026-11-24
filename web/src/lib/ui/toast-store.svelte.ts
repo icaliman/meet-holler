@@ -20,7 +20,8 @@ export interface Toast {
 
 let ids = 0
 
-export const toasts = $state<{ list: Toast[] }>({ list: [] })
+/** `stage` while the meeting room is up: toasts sit above its control bar. */
+export const toasts = $state<{ list: Toast[], placement: 'page' | 'stage' }>({ list: [], placement: 'page' })
 
 export function toast(message: string, options: Partial<Omit<Toast, 'id' | 'message'>> = {}): number {
     const id = ++ids

@@ -5,8 +5,6 @@
     import Icon from './Icon.svelte'
     import { dismiss, toasts, type Toast, type ToastAction } from './toast-store.svelte'
 
-    let { placement = 'page' }: { placement?: 'page' | 'stage' } = $props()
-
     const reduced = typeof matchMedia === 'function' && matchMedia('(prefers-reduced-motion: reduce)').matches
     let busy = $state<number | null>(null)
 
@@ -21,7 +19,7 @@
     }
 </script>
 
-<div class="toasts {placement}" aria-live="polite" aria-relevant="additions text" role="region" aria-label="Notifications">
+<div class="toasts {toasts.placement}" aria-live="polite" aria-relevant="additions text" role="region" aria-label="Notifications">
     {#each toasts.list as item (item.id)}
         <div
             class="toast {item.tone}"
@@ -71,8 +69,20 @@
         pointer-events: none;
     }
 
+    /* In the meeting: light cards at the top right, clear of the name tags and the controls. */
     .toasts.stage {
-        bottom: calc(104px + env(safe-area-inset-bottom));
+        --ink: #F4EFE4;
+        --bg: #1A1712;
+        top: calc(72px + env(safe-area-inset-top));
+        bottom: auto;
+    }
+
+    @media (min-width: 768px) {
+        .toasts.stage {
+            left: auto;
+            right: var(--s-4);
+            align-items: flex-end;
+        }
     }
 
     @media (min-width: 768px) {
