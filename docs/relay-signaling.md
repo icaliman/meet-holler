@@ -60,11 +60,11 @@ The rule in every case: **no word from the hub, poll**. A guest that polls is ex
 | The flag is off | No hub is named, nobody sends `relay`: today's behaviour, request for request | `test/relay.test.ts` (the flag), `test/relay-client.test.ts` (a meeting that does not relay), web `holler.test.ts` |
 | A guest arrives before the host (a scheduled meeting) | No hub: the guests poll and connect through D1. When the host joins they connect to it and go quiet | `relay-client.test.ts` "guests who came before the host" |
 | The host reloads | Its connections close; each guest polls at once (the channel closing is the signal). The new page takes its side back, sends `reset` and new offers through D1, the guests reconnect and go quiet again | `relay-client.test.ts` "reloads"; **real Chrome**: guests polling within 2 s, quiet again about 10 s later, 3 polls and 3 signals each |
-| The host leaves | The guests poll and stay connected to each other; what they tell each other still goes over their channels. A host who joins again is the hub again | `relay-client.test.ts` "leaves" |
+| The host leaves | The guests poll and stay connected to each other; what they tell each other still goes over their channels. A host who joins again is the hub again | `relay-client.test.ts` "leaves"; **real Chrome**: the quiet guest polling within seconds, still seeing the other guest |
 | The channel to the host closes, or the connection to it drops | That guest polls at once and rests again when a channel to the host is back; the others are not affected | `relay-client.test.ts` "loses the channel to one guest only", holler-js `relay.test.js` |
 | The host's page is frozen or throttled: connected, but silent | Each guest polls after 10 seconds without a word from the host (`hubTimeout`), and rests again when it speaks | holler-js `relay.test.js` "the hub goes silent" |
 | The host's tab is gone and its beacon was lost | The Worker stops naming it as hub after 20 seconds; the guests have been polling since their timeout | `relay.test.ts` "is nobody while…" |
-| A tab that does not relay is in the meeting (an old page, the switch above) | It polls and signals through D1. A quiet guest answers it through D1 too; the host is told who has signals waiting (`pending`) and tells them to poll once | `relay-client.test.ts` "tabs that relay and tabs that do not", `relay.test.ts` "names who has signals waiting" |
+| A tab that does not relay is in the meeting (an old page, the switch above) | It polls and signals through D1. A quiet guest answers it through D1 too; the host is told who has signals waiting (`pending`) and tells them to poll once | `relay-client.test.ts` "tabs that relay and tabs that do not", `relay.test.ts` "names who has signals waiting"; **real Chrome**: a quiet guest and a tab with the switch off saw each other after 2 polls by the quiet one |
 | A guest never gets a connection to the host (their networks do not meet) | It keeps polling. The others' signals for it go to D1 after 10 seconds; whoever is reached over D1 answers over D1 | holler-js `relay.test.js` "their peer never reaches the hub" |
 | A quiet guest reloads | Its `leave` beacon frees its side although the host still names it; the new page polls until it is back on the host, and its offers to the other guests go through the host | `relay.test.ts` "free their side with the leave beacon", holler-js "a quiet peer that reloads" |
 | The host removes a quiet guest, or ends the meeting | The guest hears it from the host (its view says `ended`, with the reason) | `relay-client.test.ts` "carries the meeting itself to the quiet guests" |
@@ -90,7 +90,7 @@ Once connected, a meeting costs **one poll per host poll, whatever its size**, i
 
 Signals to connect grow with the number of people when relayed (12 per guest: the pair with the host) and with the number of pairs when not (12 per pair). The poll counts while connecting are not meaningful here: the fake network connects in milliseconds.
 
-In **Chrome** (three headless browsers with a fake camera, against `wrangler dev` and local D1, on one machine):
+In **Chrome** (three browsers driven over the DevTools protocol, each with its own profile and a fake camera, against `wrangler dev` and local D1, all on one machine, so no NAT and no real network between them):
 
 | | Measured |
 | --- | --- |
@@ -99,7 +99,9 @@ In **Chrome** (three headless browsers with a fake camera, against `wrangler dev
 | The second guest joining, for the first one | **0 requests**: the first guest's last poll was 51 seconds old when all three saw each other's video |
 | A guest, for 50 seconds of a connected meeting | **0 requests** |
 | The host reloading, per guest | 3 polls and 3 signals, quiet again about 10 seconds after the reload |
-| The host's tab in the background (another tab in front in its window) | still polling every 3 seconds; see [Risks](#risks-and-open-ends) for how long this was watched |
+| A guest whose tab does not relay joining, for a quiet guest | 2 polls and 16 signals (its offer and candidates, through D1), then quiet again; the other tab polls every 3 seconds as it does today |
+| The host, for 7 minutes of a connected meeting | 135 polls: one every 3.1 seconds, and nothing else |
+| The guests, for those 7 minutes | **0 requests** |
 
 ### Per participant-hour
 
@@ -127,7 +129,7 @@ The host's word also keeps guests alive on the Worker: a host could keep a guest
 
 ## Risks and open ends
 
-- **The host's tab in the background.** Browsers slow timers in a hidden tab. If the host's polls stall, the guests fall back to polling after 10 seconds, so the meeting goes on, but the saving is gone for as long as it lasts, and a guest joining waits for a slower host. What was checked and what was not is in the pull request that added this page; Safari and mobile browsers were not tried.
+- **The host's tab in the background: not verified.** Browsers slow timers in a hidden tab, and the host's polls are a timer. If they stall, the guests fall back to polling after 10 seconds, so the meeting goes on (that fallback is tested), but the saving is gone for as long as it lasts and a guest joining waits on a slower host. An attempt to measure it failed: with another tab opened in front of the host's, in headless Chrome and in a visible window, the host kept polling every 3 seconds for 7 minutes, but `document.visibilityState` never left `visible`, so the browser the test tool starts does not treat that tab as hidden and the run says nothing about throttling. From Chrome's own description of its rules (not checked here): a hidden tab's timers run at most once a second, which a 3-second poll does not notice, and the once-a-minute throttling after 5 minutes does not apply to a page with an open data channel or live media. Safari and mobile browsers are stricter and were not tried at all. **To do before turning this on**: a meeting with the host's tab really in the background (another tab in front, the window minimised, the phone locked) for 10 minutes, in Chrome, Firefox and Safari, watching the `data-relay` attribute on the guests' pages.
 - **The host's connection matters more.** A guest joins as fast as the host polls and relays. A host on a poor network slows every join down; a host whose page freezes costs every guest a 10-second timeout before they poll again.
 - **Not yet in the dev mock.** `web/dev/mock-holler.ts` does not name a hub, so `npm --prefix web run dev` always polls. Use `npm run dev` (the Worker) with `RELAY_SIGNALING=host` in `.dev.vars` to see relaying.
 - **The dependency.** `@packstub/holler` is installed from the branch that adds `RelaySignaling` until it is released.
