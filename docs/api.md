@@ -314,27 +314,30 @@ The Workers free plan allows, per day: **100,000 Worker requests**, and on D1 **
 
 ### What one request costs
 
-| Request | Rows written | Rows read (about) |
+Measured against local D1 (`meta.rows_written` / `meta.rows_read` of each statement):
+
+| Request | Rows written | Rows read |
 | --- | --- | --- |
-| Poll, nothing new (most of them) | 0 | 15–25 |
-| Poll that writes the heartbeat (one in ~4 at 3 s) | 1 | 15–25 |
-| Poll that acknowledges signals | 2 per signal (row + index) | 15–25 |
-| Signal to one person | ~3 (row, index, sequence) | ~10 |
+| Poll, nothing new (most of them) | 0 | 9 with two people, 14 with three, about 20 with four |
+| Poll that writes the heartbeat (one in ~4 at 3 s) | 1 | the same |
+| Poll that acknowledges signals | 1 per signal read | the same + 1 per signal |
+| Signal to one person | 3 (row, index, sequence) | 10–17 |
+| Signal to everyone in a 4-person call | 7 | about 25 |
 | Create a meeting | 2 | 1 |
-| Join | 2–3 | ~10 |
-| Waiting guest's `/me` | 1 every 20 s (heartbeat), else 0 | ~3 |
+| Join | 2–3 | about 10 |
+| Waiting guest's `/me` | 1 every 20 s (heartbeat), else 0 | about 3 |
 
 A poll is one D1 batch: expire quiet people, claim or heartbeat, acknowledge read signals, read the meeting, its participants and my new signals. Each write statement only writes when its condition holds, so a quiet poll writes nothing. The tables have one secondary index each (participants by meeting, signals by recipient), because every index adds a written row.
 
-Connecting a call costs about 14 signals per pair of people (offer, answer, a dozen ICE candidates, a state), so about 5 rows written and 1 request each: a 4-person meeting (6 pairs) spends about 85 requests and 450 rows written to connect.
+Connecting a call costs about 14 signals per pair of people (offer, answer, a dozen ICE candidates, a state), each one request and about 4 rows written (3 to queue, 1 to acknowledge): a 4-person meeting (6 pairs) spends about 85 requests and 350 rows written to connect.
 
 ### Per participant-hour
 
 | Poll interval in a running call | Requests | Rows written | Rows read |
 | --- | --- | --- | --- |
-| 1 s (Holler's default, all the time) | 3,600 | ~330 | ~70,000 |
-| 3 s (recommended once `active`) | 1,200 | ~300 | ~25,000 |
-| 5 s | 720 | ~240 | ~15,000 |
+| 1 s (Holler's default, all the time) | 3,600 | ~330 | ~55,000 |
+| 3 s (recommended once `active`) | 1,200 | ~300 | ~18,000 |
+| 5 s | 720 | ~240 | ~11,000 |
 
 Heartbeats are one write every 10–15 seconds whatever the interval. Requests run out first, long before writes or reads.
 
@@ -344,12 +347,12 @@ At 3 s polls once connected (1 s for the first ~15 s), for each meeting length:
 
 | Meeting | Requests per meeting | Rows written | Meetings/day (requests limit) |
 | --- | --- | --- | --- |
-| 2 people, 30 min | ~1,250 | ~380 | **~80** |
-| 4 people, 30 min | ~2,550 | ~1,100 | **~39** |
-| 4 people, 60 min | ~4,950 | ~1,700 | **~20** |
-| 2 people, 60 min | ~2,450 | ~680 | **~40** |
+| 2 people, 30 min | ~1,250 | ~370 | **~80** |
+| 4 people, 30 min | ~2,550 | ~970 | **~39** |
+| 4 people, 60 min | ~4,950 | ~1,570 | **~20** |
+| 2 people, 60 min | ~2,450 | ~670 | **~40** |
 
-Roughly **80 participant-hours a day** at 3 s polls (about 140 at 5 s); at Holler's default 1 s it would be under 28. The D1 write limit would allow about 300 participant-hours and reads about 200, so neither binds. The daily cron costs a few hundred rows at most.
+Roughly **80 participant-hours a day** at 3 s polls (about 140 at 5 s); at Holler's default 1 s it would be under 28. The D1 write limit would allow about 330 participant-hours and reads about 270, so neither binds. The daily cron costs a few hundred rows at most.
 
 A waiting guest costs 720–1,200 requests an hour at 3–5 s polls, so keep the waiting room poll at 5 s.
 
@@ -372,4 +375,4 @@ Relative to [ARCHITECTURE.md](ARCHITECTURE.md):
 
 ### Holler and a lone participant
 
-`@packstub/holler` 1.0 was built for calls that end once fewer than two people are left. In a meeting, when the second-to-last person leaves, the one who stays can briefly see their connection to the leaver drop before the next poll says the leaver is gone; the client then arms its 15-second "reconnecting" timer while the call is still `active`, and that timer is not cleared when the call turns back to `ringing`. It then hangs up as `dropped`. The app should treat `ended` with `dropped` or `failed` while the meeting is still open and this person did not click Leave as "everyone left": join again (`POST /join`, then `resumeCall`). A small change in holler-js (clear the drop timer in `refreshState()` when the call is not `active`) would remove the workaround.
+`@packstub/holler` 1.0 was built for calls that end once fewer than two people are left. In a meeting, when the second-to-last person leaves, the one who stays can briefly see their connection to the leaver drop before the next poll says the leaver is gone; the client then arms its 15-second "reconnecting" timer while the call is still `active`, and that timer is not cleared when the call turns back to `ringing`. It then hangs up as `dropped`. The app should treat `ended` with `dropped` or `failed` while the meeting is still open and this person did not click Leave as "everyone left": join again (`POST /join`, then `resumeCall`). A small change in holler-js (clear the drop timer in `refreshState()` when the call is not `active`) would remove the workaround. `test/call-client.test.ts` reproduces it with the real client.
