@@ -1,7 +1,8 @@
 import { Hono } from 'hono'
+import { bodyLimit } from 'hono/body-limit'
 import { ApiError } from './lib/errors'
 import { rateLimit } from './lib/ratelimit'
-import { holler } from './holler/routes'
+import { holler, MAX_SIGNAL_BYTES } from './holler/routes'
 import { meetings } from './meetings/routes'
 
 export type AppEnv = { Bindings: Env }
@@ -9,6 +10,21 @@ export type AppEnv = { Bindings: Env }
 export const app = new Hono<AppEnv>()
 
 app.use('/api/*', rateLimit('api'))
+
+/**
+ * No request has a reason to be big: the largest is a signal (an SDP offer),
+ * everything else is a few fields. Refused from Content-Length, or while
+ * reading when there is none, before anything parses it.
+ */
+export const MAX_BODY_BYTES = 16 * 1024
+const tooLarge = () => {
+    throw new ApiError('invalid', 'This request is too large.', 'too_large', 413)
+}
+const smallBody = bodyLimit({ maxSize: MAX_BODY_BYTES, onError: tooLarge })
+// The payload's own limit, plus room for the envelope around it.
+const signalBody = bodyLimit({ maxSize: MAX_SIGNAL_BYTES + 1024, onError: tooLarge })
+
+app.use('/api/*', (c, next) => (c.req.path.endsWith('/holler/signals') ? signalBody(c, next) : smallBody(c, next)))
 
 app.get('/api/health', (c) => c.json({ ok: true }))
 app.route('/api/meetings', meetings)
