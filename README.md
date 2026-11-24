@@ -27,7 +27,7 @@ npm run dev                       # the Worker and the built app on http://local
 | `npm run typecheck` | the Worker's TypeScript, and that `worker-configuration.d.ts` matches `wrangler.jsonc` (`npm run types` regenerates it) |
 | `npm run deploy` | build and `wrangler deploy` |
 
-The API is described in [docs/api.md](docs/api.md).
+The API is described in [docs/api.md](docs/api.md). What the server and a meeting's host can see, and the risks accepted on purpose, are in [docs/security.md](docs/security.md); to report a vulnerability, see [SECURITY.md](SECURITY.md).
 
 ## Free-plan budget
 
