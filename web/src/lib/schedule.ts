@@ -51,8 +51,13 @@ export function toInput(values: ScheduleValues): CreateMeetingInput {
     }
 }
 
+/** A number in [0, 1) from the browser's cryptographic source: a passcode is a secret, and Math.random can be predicted. */
+function secureRandom(): number {
+    return crypto.getRandomValues(new Uint32Array(1))[0] / 2 ** 32
+}
+
 /** A passcode that is easy to read out: six digits, no leading zero. */
-export function suggestPasscode(random: () => number = Math.random): string {
+export function suggestPasscode(random: () => number = secureRandom): string {
     return String(100000 + Math.floor(random() * 900000))
 }
 

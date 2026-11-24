@@ -13,7 +13,7 @@
     import { next, rejoinBudget, type FlowEvent, type Phase } from '../../lib/flow'
     import { explain } from '../../lib/messages'
     import { relays } from '../../lib/holler'
-    import { claimHostFragment, hostKeyFor, rememberName, savedName } from '../../lib/storage'
+    import { forgetHostKey, hostKeyFor, rememberHostKey, rememberName, savedName, takeHostFragment } from '../../lib/storage'
     import { forgetSession, rememberSession, sessionFor, type Session } from '../../lib/session'
     import { clearToasts, toast } from '../../lib/ui/toast-store.svelte'
     import { announce } from '../../lib/ui/announce.svelte'
@@ -22,10 +22,12 @@
     let { code }: { code: string } = $props()
 
     // The page is remounted per route (App keys it on the path), so the code never changes here.
+    // A host link's key is a claim until the Worker has checked it (lookUp below): not stored yet.
+    let offeredKey = takeHostFragment()
     // svelte-ignore state_referenced_locally
-    claimHostFragment(code)
-    // svelte-ignore state_referenced_locally
-    const hostKey = hostKeyFor(code)
+    let hostKey = $state(hostKeyFor(code))
+    /** The last token this tab had: someone who was in may still ask about a private meeting. */
+    let lastToken: string | null = null
     // svelte-ignore state_referenced_locally
     let session = $state<Session | null>(sessionFor(code))
 
@@ -45,9 +47,45 @@
         phase = next(phase, event)
     }
 
+    const refused = (error: unknown) => error instanceof ApiError && error.code === 'forbidden'
+
+    /**
+     * The meeting, asked as whoever this browser can show it is. A key from a host link is
+     * kept only if the Worker accepts it, and a stored key the Worker refuses is forgotten:
+     * either way a wrong key never stands between someone and the meeting.
+     */
+    async function lookUp(): Promise<Meeting> {
+        if (offeredKey) {
+            const key = offeredKey
+            try {
+                const found = await api.getMeeting(code, { hostKey: key })
+                offeredKey = null
+                rememberHostKey(code, key)
+                hostKey = key
+
+                return found
+            } catch (error) {
+                if (! refused(error)) throw error
+                offeredKey = null
+                toast("That host link isn't for this meeting. You can still join as a guest.", { tone: 'error', timeout: 7000 })
+            }
+        }
+        if (hostKey) {
+            try {
+                return await api.getMeeting(code, { hostKey })
+            } catch (error) {
+                if (! refused(error)) throw error
+                forgetHostKey(code)
+                hostKey = null
+            }
+        }
+
+        return api.getMeeting(code, session?.token ?? lastToken ?? undefined)
+    }
+
     async function load() {
         try {
-            meeting = await api.getMeeting(code)
+            meeting = await lookUp()
             failure = null
         } catch (error) {
             failure = error as Error
@@ -126,6 +164,7 @@
         room?.destroy()
         room = null
         send({ type: 'call_ended', reason, canRejoin: mayRejoin() })
+        lastToken = session?.token ?? lastToken
         forgetSession(code)
         session = null
         if (phase.name === 'joining') {
@@ -154,7 +193,7 @@
         while (Date.now() < until) {
             await new Promise((resolve) => setTimeout(resolve, 5000))
             try {
-                meeting = await api.getMeeting(code)
+                meeting = await lookUp()
                 if (meeting.status === 'ended') {
                     holding = false
                     phase = { name: 'ended' }

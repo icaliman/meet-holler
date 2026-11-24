@@ -3,6 +3,8 @@ import { render, screen } from '@testing-library/svelte'
 import userEvent from '@testing-library/user-event'
 import RoomView from './RoomView.svelte'
 import type { Person, RoomLike } from './types'
+import { Annotations } from '../annotate/annotations.svelte'
+import { localWire } from '../annotate/wire'
 
 const person = (over: Partial<Person>): Person => ({
     id: 'p1', name: 'Ion', seat: 0, me: true, stream: null, muted: false, cameraOff: true, sharing: false,
@@ -91,5 +93,28 @@ describe('the meeting room', () => {
     it('says when the connection dropped', () => {
         render(RoomView, { room: fakeRoom({ state: 'reconnecting' }), onleave: () => {} })
         expect(screen.getByRole('status')).toHaveTextContent('Connection lost. Trying to get you back…')
+    })
+
+    it('offers the pointer and pens over a shared screen, with shortcuts', async () => {
+        const people = [person({}), person({ id: 'p2', name: 'Ana Pop', seat: 1, me: false, sharing: true })]
+        const annotations = new Annotations({ wire: localWire(), me: { id: 'p1', isHost: false }, announce: () => {} })
+        annotations.rosterChanged(people)
+        render(RoomView, { room: fakeRoom({ people, annotations }), onleave: () => {} })
+        expect(screen.getByRole('toolbar', { name: "Point and draw on Ana Pop's screen" })).toBeInTheDocument()
+        // No tool: the screen is not a drawing surface, clicks go through.
+        expect(screen.queryByRole('application')).not.toBeInTheDocument()
+        await userEvent.keyboard('p')
+        expect(annotations.tool).toBe('pointer')
+        expect(screen.getByRole('application', { name: /Shared screen/ })).toBeInTheDocument()
+        await userEvent.keyboard('{Escape}')
+        expect(annotations.tool).toBeNull()
+        annotations.destroy()
+    })
+
+    it('shows no palette while nobody shares', () => {
+        const annotations = new Annotations({ wire: localWire(), me: { id: 'p1', isHost: false }, announce: () => {} })
+        render(RoomView, { room: fakeRoom({ annotations }), onleave: () => {} })
+        expect(screen.queryByRole('toolbar', { name: /Point and draw/ })).not.toBeInTheDocument()
+        annotations.destroy()
     })
 })

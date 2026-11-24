@@ -24,6 +24,13 @@ export const WAITING_HEARTBEAT_MS = 20_000
 /** A waiting guest who stopped polling this long ago is off the host's list. */
 export const WAITING_STALE_MS = 60_000
 
+/** Guests in a waiting room at once (the ones still asking); the host's list and every poll carry them. */
+export const MAX_WAITING = 20
+/** Participant records one meeting keeps: every poll reads them all, so a flood of joins must not grow them without end. */
+export const MAX_RECORDS = 60
+/** People who left, were denied or removed, or stopped waiting are forgotten this long after. */
+export const PRUNE_AFTER_MS = 10 * 60_000
+
 /** Wrong passcodes allowed per meeting in one window. */
 export const PASSCODE_MAX_FAILURES = 10
 export const PASSCODE_WINDOW_MS = 15 * 60_000

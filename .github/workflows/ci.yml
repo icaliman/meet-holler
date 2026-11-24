@@ -5,6 +5,9 @@ on:
     branches: [main]
   pull_request:
 
+# Read-only: the jobs check code out and run it, nothing more. No secrets are
+# used, and `pull_request` (never `pull_request_target`) keeps it that way for
+# pull requests from forks.
 permissions:
   contents: read
 
@@ -12,13 +15,18 @@ concurrency:
   group: ci-${{ github.ref }}
   cancel-in-progress: true
 
+# Actions are pinned to a commit (the tag is in the comment); Dependabot
+# updates them (.github/dependabot.yml).
 jobs:
   worker:
     name: Worker typecheck and tests
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
-      - uses: actions/checkout@v5
-      - uses: actions/setup-node@v5
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5
         with:
           node-version: 24
           cache: npm
@@ -27,18 +35,34 @@ jobs:
       - run: npm test
 
   web:
-    name: Web build
+    name: Web check, tests and build
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
-      - uses: actions/checkout@v5
-      - name: Is there an app to build yet?
-        id: web
-        run: echo "present=$([ -f web/package.json ] && echo true || echo false)" >> "$GITHUB_OUTPUT"
-      - uses: actions/setup-node@v5
-        if: steps.web.outputs.present == 'true'
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5
         with:
           node-version: 24
-      - if: steps.web.outputs.present == 'true'
-        run: npm --prefix web ci
-      - if: steps.web.outputs.present == 'true'
-        run: npm run build
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+      - run: npm --prefix web ci
+      - run: npm --prefix web run check
+      - run: npm --prefix web test
+      - run: npm run build
+
+  # The one check the ruleset on main requires: add every new job to `needs`.
+  passed:
+    name: Tests passed
+    if: always()
+    needs: [worker, web]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Fail unless every job succeeded
+        env:
+          RESULTS: ${{ join(needs.*.result, ' ') }}
+        run: |
+          for result in $RESULTS; do
+            [ "$result" = success ] || { echo "A job ended with: $result"; exit 1; }
+          done

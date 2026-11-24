@@ -56,7 +56,8 @@ export function presentCall(meeting: MeetingRow, participants: ParticipantRow[],
     const relays = meeting.relay === 'host'
     const hub = relays ? hubOf(meeting, participants, now) : null
 
-    const peers = participants
+    // Someone the host removed is told so, and nothing more: who is still in the meeting is no longer theirs to know.
+    const peers = (removed ? [] : participants)
         .filter((p) => p.id !== me.id && p.seat !== null)
         .filter((p) => LIVE.includes(p.status) || (GONE.includes(p.status) && (p.left_at ?? 0) >= now - LEFT_VISIBLE_MS))
         .sort((a, b) => (a.seat ?? 0) - (b.seat ?? 0))
@@ -65,6 +66,8 @@ export function presentCall(meeting: MeetingRow, participants: ParticipantRow[],
             name: p.name,
             avatar: null,
             seat: p.seat,
+            // From the participant's row, which only /join writes (from the hostKey): never from anything a client sends.
+            role: p.role === 'host' ? 'host' as const : 'guest' as const,
             status: p.status === 'removed' ? 'left' : p.status,
             claimed: isClaimed(p, now),
             seen_ago: seenAgo(p, now),

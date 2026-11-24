@@ -2,8 +2,10 @@
 // controls over the API. Components read it through RoomLike (types.ts).
 
 import type { CallClient, CallState, DeviceKind, DeviceList, Peer } from '@packstub/holler'
+import { Annotations } from '../annotate/annotations.svelte'
+import { hollerWire } from '../annotate/wire'
 import { api } from '../api'
-import { clientFor, type PollMeeting } from '../holler'
+import { clientFor, type PollMeeting, type Role } from '../holler'
 import { announce } from '../ui/announce.svelte'
 import { dismiss, toast } from '../ui/toast-store.svelte'
 import type { Participant, WaitingGuest } from '../types'
@@ -62,9 +64,11 @@ export class Room implements RoomLike {
     hasCamera = $state(true)
     hasMicrophone = $state(true)
     speaker = $state<string | null>(null)
+    readonly annotations: Annotations
     readonly canShare = typeof navigator !== 'undefined' && typeof navigator.mediaDevices?.getDisplayMedia === 'function'
 
     private client: CallClient
+    private roles = new Map<string, Role>()
     private me: Participant
     private bearer: string
     private meter: LevelMeter
@@ -97,8 +101,10 @@ export class Room implements RoomLike {
             relay: options.relay ?? false,
             // Nothing on screen changes with it; the attribute is there to look at (and for tests).
             onRelayMode: (mode) => { document.documentElement.dataset.relay = mode },
+            onRoles: (roles) => this.rolesChanged(roles),
         })
         this.meter = new LevelMeter((voices) => { this.voices = voices })
+        this.annotations = new Annotations({ wire: hollerWire(this.client), me: { id: options.me.id, isHost: this.isHost } })
 
         this.client.setMuted(this.muted)
         this.client.setCameraOff(this.cameraOff)
@@ -158,6 +164,21 @@ export class Room implements RoomLike {
         })
     }
 
+    /**
+     * Who the Worker names as host or guest (`role` in the poll's `peers`). Only ever the
+     * Worker's word, never a peer's: it decides whose "clear all" counts (docs/annotations.md).
+     * A role does not change, so a poll that leaves someone out forgets nothing.
+     */
+    private rolesChanged(roles: Map<string, Role>): void {
+        let changed = false
+        for (const [id, role] of roles) {
+            if (this.roles.get(id) === role) continue
+            this.roles.set(id, role)
+            changed = true
+        }
+        if (changed) this.sync()
+    }
+
     /** The roster from the client, me first. */
     private sync(): void {
         const c = this.client
@@ -191,6 +212,7 @@ export class Room implements RoomLike {
                 quality: p.quality,
             }))
         this.people = [mine, ...others]
+        this.annotations.rosterChanged(this.people.map(({ id, name, seat, me, sharing }) => ({ id, name, seat, me, sharing, host: me ? this.isHost : this.roles.get(id) === 'host' })))
         this.muted = c.muted
         this.cameraOff = c.cameraOff
         this.sharing = c.sharing
@@ -276,7 +298,7 @@ export class Room implements RoomLike {
     async setLocked(locked: boolean): Promise<void> {
         try {
             const { meeting } = await api.update(this.code, { locked }, this.token())
-            this.meeting = { ...(this.meeting ?? { status: 'open', title: null, waitingRoom: meeting.waitingRoom }), locked: meeting.locked, waitingRoom: meeting.waitingRoom }
+            this.meeting = { ...(this.meeting ?? { status: 'open', title: null, waitingRoom: meeting.waitingRoom }), locked: meeting.locked === true, waitingRoom: meeting.waitingRoom }
             announce(locked ? 'Meeting locked. Nobody new can join.' : 'Meeting unlocked.')
         } catch {
             toast(locked ? "We couldn't lock the meeting. Try again." : "We couldn't unlock the meeting. Try again.", { tone: 'error' })
@@ -286,7 +308,7 @@ export class Room implements RoomLike {
     async setWaitingRoom(on: boolean): Promise<void> {
         try {
             const { meeting } = await api.update(this.code, { waitingRoom: on }, this.token())
-            this.meeting = { ...(this.meeting ?? { status: 'open', title: null, locked: meeting.locked }), waitingRoom: meeting.waitingRoom, locked: meeting.locked }
+            this.meeting = { ...(this.meeting ?? { status: 'open', title: null, locked: meeting.locked === true }), waitingRoom: meeting.waitingRoom, locked: meeting.locked === true }
             announce(on ? 'Waiting room on. You let each guest in.' : 'Waiting room off. Guests come straight in.')
         } catch {
             toast("We couldn't change the waiting room. Try again.", { tone: 'error' })
@@ -352,6 +374,7 @@ export class Room implements RoomLike {
         delete document.documentElement.dataset.relay
         removeEventListener('pagehide', this.onPageHide)
         this.meter.destroy()
+        this.annotations.destroy()
         for (const id of this.waitingToasts.values()) dismiss(id)
         this.waitingToasts.clear()
     }

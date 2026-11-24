@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { HttpSignaling, RelaySignaling } from '@packstub/holler'
-import { CHANNELS, clientFor, POLL, POLL_CONNECTED, relayedSignalingFor, relays, routes, signalingFor } from './holler'
+import { CHANNELS, clientFor, POLL, POLL_CONNECTED, relayedSignalingFor, relays, rolesIn, routes, signalingFor } from './holler'
 import { createApi } from './api'
 import { MockStore } from '../../dev/mock-store'
 import { installHoller } from '../../dev/mock-holler'
@@ -46,6 +46,24 @@ describe('Holler signaling for a meeting', () => {
         expect(poll.call).toMatchObject({ id: code, status: 'ringing', joined: false, role: 'caller' })
         await vi.waitFor(() => expect(seen).toHaveBeenCalled())
         expect(seen.mock.calls[0][0]).toMatchObject({ waitingRoom: true, waiting: [{ id: guest.participant.id, name: 'Ana' }] })
+    })
+
+    it('hands the roles the Worker names in each poll to the room', async () => {
+        const { code, host, guest } = await meetingWithTwo()
+        await api.admit(code, guest.participant.id, host.token)
+        const seen = vi.fn()
+        const signaling = signalingFor(code, guest.token, undefined, fetch, seen)
+
+        await signaling.poll({ call: code, tab: 't1', claim: true })
+        await vi.waitFor(() => expect(seen).toHaveBeenCalled())
+        expect([...seen.mock.calls[0][0]]).toEqual([[host.participant.id, 'host']])
+    })
+
+    it('reads roles only where the Worker put them, and none from a backend that sends none', () => {
+        expect([...rolesIn({ call: { peers: [{ id: 'a', role: 'host' }, { id: 'b', role: 'guest' }, { id: 'c' }, { id: 'd', role: 'admin' }, null] } })]).toEqual([['a', 'host'], ['b', 'guest']])
+        expect([...rolesIn({ call: null, incoming: { peers: [{ id: 7, role: 'host' }] } })]).toEqual([['7', 'host']])
+        expect(rolesIn({ call: { peers: [{ id: 'a', name: 'Ion' }] } }).size).toBe(0)
+        for (const odd of [null, undefined, 'x', {}, { call: {} }, { call: { peers: 'host' } }]) expect(rolesIn(odd).size).toBe(0)
     })
 
     it('keeps a lone participant ringing, and goes active with two', async () => {

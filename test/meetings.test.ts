@@ -111,9 +111,10 @@ describe('looking a meeting up', () => {
         const start = new Date(Date.UTC(2027, 0, 15, 14, 30))
         vi.useFakeTimers({ toFake: ['Date'] })
         vi.setSystemTime(new Date(Date.UTC(2027, 0, 10)))
-        const { code } = await createMeeting({ title: 'Plan, review; ship', visibility: 'private', passcode: 'secret-pass', scheduledAt: start.toISOString(), durationMin: 45, hostName: 'Ana' })
+        const { code, hostKey } = await createMeeting({ title: 'Plan, review; ship', visibility: 'private', passcode: 'secret-pass', scheduledAt: start.toISOString(), durationMin: 45, hostName: 'Ana' })
 
-        const response = await api('GET', `/api/meetings/${code}.ics`)
+        // The host's own copy: a private meeting's title is not for someone with only the link (private-meetings.test.ts).
+        const response = await api('GET', `/api/meetings/${code}.ics`, { hostKey })
 
         expect(response.status).toBe(200)
         expect(response.headers.get('Content-Type')).toBe('text/calendar; charset=utf-8')

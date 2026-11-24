@@ -27,8 +27,9 @@
   ],
 
   // Once a day: end meetings everyone walked away from, delete old ones and
-  // stale signals.
-  "triggers": { "crons": ["17 3 * * *"] },
+  // stale signals. Every 15 minutes: only the signals nobody read (one small
+  // DELETE), so what a meeting leaves behind never piles up for a day.
+  "triggers": { "crons": ["17 3 * * *", "*/15 * * * *"] },
 
   // Not secret. SESSION_SECRET signs the participant tokens:
   // `wrangler secret put SESSION_SECRET`, and .dev.vars locally (see

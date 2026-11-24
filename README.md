@@ -14,7 +14,7 @@ Node 22 or newer.
 
 ```bash
 npm install
-cp .dev.vars.example .dev.vars    # SESSION_SECRET for local tokens
+cp .dev.vars.example .dev.vars    # then put a random SESSION_SECRET in it: openssl rand -base64 32
 npm run db:migrate:local          # the local D1 database
 npm run dev                       # the Worker and the built app on http://localhost:8787
 ```
@@ -27,7 +27,7 @@ npm run dev                       # the Worker and the built app on http://local
 | `npm run typecheck` | the Worker's TypeScript, and that `worker-configuration.d.ts` matches `wrangler.jsonc` (`npm run types` regenerates it) |
 | `npm run deploy` | build and `wrangler deploy` |
 
-The API is described in [docs/api.md](docs/api.md).
+The API is described in [docs/api.md](docs/api.md). What the server and a meeting's host can see, and the risks accepted on purpose, are in [docs/security.md](docs/security.md); to report a vulnerability, see [SECURITY.md](SECURITY.md).
 
 ## Free-plan budget
 
