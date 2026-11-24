@@ -3,6 +3,10 @@
 # `wrangler secret put SESSION_SECRET` with `openssl rand -base64 32`.
 SESSION_SECRET=change-me-to-a-long-random-string
 
+# Optional: relay signaling through the host's browser, so guests stop polling
+# (docs/relay-signaling.md). Off unless this says host.
+# RELAY_SIGNALING=host
+
 # Optional: Cloudflare Realtime TURN, for people behind strict NATs and firewalls.
 # TURN_KEY_ID=
 # TURN_KEY_API_TOKEN=

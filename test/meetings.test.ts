@@ -19,6 +19,7 @@ describe('creating a meeting', () => {
             requiresPasscode: false,
             waitingRoom: false,
             scheduledAt: null,
+            relay: null,
             durationMin: null,
             status: 'open',
             locked: false,

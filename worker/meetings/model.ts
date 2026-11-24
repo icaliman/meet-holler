@@ -18,6 +18,8 @@ export type MeetingRow = {
     end_reason: string | null
     pass_failures: number
     pass_window: number | null
+    /** `host`: signaling is relayed through the host's browser (docs/relay-signaling.md). */
+    relay?: 'host' | null
 }
 
 export type ParticipantStatus =
@@ -38,6 +40,8 @@ export type ParticipantRow = {
     created_at: number
     admitted_at: number | null
     left_at: number | null
+    /** Whether this tab takes signaling over a data channel; null until its first poll. */
+    relay?: number | null
 }
 
 export type MeetingStatus = 'scheduled' | 'open' | 'ended'
@@ -102,6 +106,7 @@ export function publicMeeting(meeting: MeetingRow, participantCount: number, now
         participantCount,
         capacity: CAPACITY,
         hostName: meeting.host_name,
+        relay: meeting.relay ?? null,
     }
 }
 

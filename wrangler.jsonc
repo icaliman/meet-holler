@@ -34,8 +34,12 @@
   // `wrangler secret put SESSION_SECRET`, and .dev.vars locally (see
   // .dev.vars.example). TURN_KEY_ID and TURN_KEY_API_TOKEN (Cloudflare Realtime
   // TURN) are optional secrets, typed in worker/env.d.ts.
+  // RELAY_SIGNALING: "host" makes new meetings relay signaling through the
+  // host's browser, so the guests stop polling (docs/relay-signaling.md);
+  // anything else leaves every browser polling, as before.
   "vars": {
-    "STUN_URL": "stun:stun.cloudflare.com:3478"
+    "STUN_URL": "stun:stun.cloudflare.com:3478",
+    "RELAY_SIGNALING": "off"
   },
   "secrets": {
     "required": ["SESSION_SECRET"]
