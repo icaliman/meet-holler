@@ -1,6 +1,11 @@
 type IceServer = { urls: string | string[], username?: string, credential?: string }
 
-const TURN_TTL_SECONDS = 24 * 60 * 60
+/**
+ * How long TURN credentials work. They are asked when a page starts its call
+ * and a reload asks again, so they only need to outlast one sitting; whoever
+ * holds them can relay traffic on the account until they run out.
+ */
+export const TURN_TTL_SECONDS = 6 * 60 * 60
 
 /**
  * What the browsers connect through: STUN always, and short-lived Cloudflare

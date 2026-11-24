@@ -39,7 +39,8 @@ export function presentCall(meeting: MeetingRow, participants: ParticipantRow[],
     const ended = meeting.ended_at !== null
     const removed = me.status === 'removed'
 
-    const peers = participants
+    // Someone the host removed is told so, and nothing more: who is still in the meeting is no longer theirs to know.
+    const peers = (removed ? [] : participants)
         .filter((p) => p.id !== me.id && p.seat !== null)
         .filter((p) => LIVE.includes(p.status) || (GONE.includes(p.status) && (p.left_at ?? 0) >= now - LEFT_VISIBLE_MS))
         .sort((a, b) => (a.seat ?? 0) - (b.seat ?? 0))

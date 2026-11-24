@@ -40,12 +40,13 @@ describe('passcodes', () => {
 
 describe('tokens', () => {
     it('round-trip and refuse another secret or a changed payload', async () => {
-        const token = await signToken({ m: 'abcdefghjk', p: 'p1' }, 'secret')
+        const secret = 'a-secret-that-is-long-enough-to-sign-with'
+        const token = await signToken({ m: 'abcdefghjk', p: 'p1' }, secret)
 
-        expect(await verifyToken(token, 'secret')).toEqual({ m: 'abcdefghjk', p: 'p1' })
-        expect(await verifyToken(token, 'other')).toBeNull()
-        expect(await verifyToken(`x${token}`, 'secret')).toBeNull()
-        expect(await verifyToken(`${token}.x`, 'secret')).toBeNull()
+        expect(await verifyToken(token, secret)).toEqual({ m: 'abcdefghjk', p: 'p1' })
+        expect(await verifyToken(token, 'another-secret-that-is-long-enough-too')).toBeNull()
+        expect(await verifyToken(`x${token}`, secret)).toBeNull()
+        expect(await verifyToken(`${token}.x`, secret)).toBeNull()
     })
 
     it('compare in constant time', () => {

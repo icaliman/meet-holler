@@ -42,7 +42,7 @@ The Worker's JSON API, everything under `/api/*`. [ARCHITECTURE.md](ARCHITECTURE
 | `ended` | 410 | the host ended the meeting (or it expired) |
 | `rate_limited` | 429 | too many requests from this address, too many wrong passcodes for this meeting, too many people trying to get into it, or too many meetings being created at once; `Retry-After` says how many seconds to wait |
 
-**Auth.** Joining returns a `token`. Send it as `Authorization: Bearer <token>` on every route that needs it. The token is HMAC-signed (`SESSION_SECRET`) and names one participant of one meeting; keep it in `sessionStorage` so each tab is its own participant.
+**Auth.** Joining returns a `token`. Send it as `Authorization: Bearer <token>` on every route that needs it. The token is HMAC-signed (`SESSION_SECRET`) and names one participant of one meeting; keep it in `sessionStorage` so each tab is its own participant. It works for 24 hours and only on its own meeting's routes; after that (`401`) join again. It carries no role: host or guest is read from the participant's record on every request. The Worker refuses to sign or check anything (`500`) while `SESSION_SECRET` is missing, shorter than 32 characters or still the example value.
 
 The host is whoever joins with the meeting's `hostKey`. Host routes accept either the host's token (`Authorization: Bearer`) or the key itself (`X-Host-Key: <hostKey>`), so host controls also work from a page that has not joined.
 
@@ -199,7 +199,7 @@ Ends the meeting for everyone. → `{ "meeting": {…} }`. Every participant's n
 
 ### `POST /api/meetings/:code/remove/:id`
 
-Removes a participant (not the host themselves: `422 invalid`). → `{ "participant": {…} }`. Their next poll returns the call ended with `end_reason: "removed"`; their `/me` says `removed`; joining again works unless the meeting is locked (the app may want to lock it first).
+Removes a participant (not the host themselves: `422 invalid`). → `{ "participant": {…} }`. Their next poll returns the call ended with `end_reason: "removed"` and an empty `peers` (who is still in the meeting is no longer theirs to know); their `/me` says `removed`; joining again works unless the meeting is locked (the app may want to lock it first).
 
 ## Holler signaling
 
@@ -330,7 +330,7 @@ The token lives in `sessionStorage`, so a reload keeps it. On load, if `/me` say
 
 ### ICE servers
 
-`GET /ice` returns the STUN server (`STUN_URL`, `stun:stun.cloudflare.com:3478`) and, when the `TURN_KEY_ID` and `TURN_KEY_API_TOKEN` secrets are set, short-lived Cloudflare Realtime TURN credentials (24 hours) fetched per call. If the TURN service does not answer, STUN alone is returned. `iceTransportPolicy` is `all`.
+`GET /ice` returns the STUN server (`STUN_URL`, `stun:stun.cloudflare.com:3478`) and, when the `TURN_KEY_ID` and `TURN_KEY_API_TOKEN` secrets are set, short-lived Cloudflare Realtime TURN credentials (6 hours: a page asks when it starts its call, and a reload asks again) fetched per call. Only someone in the meeting gets an answer: `403` after leaving or being removed, `410` once the meeting ended. If the TURN service does not answer, STUN alone is returned. `iceTransportPolicy` is `all`.
 
 ## Free-plan budget
 
