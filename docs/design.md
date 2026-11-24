@@ -11,7 +11,7 @@ A meeting holds four people at most (the WebRTC mesh). Instead of hiding that, t
   ![The mark](brand/mark.svg)
 
 - The **home hero** is that mark grown into a live picture: a 2×2 grid of seat tiles where people "arrive" one after the other, the one talking lights up with a Volt ring, and the fourth seat says *your seat*. It explains the product (video, small groups, one click) before anyone reads a word.
-- Every person in a meeting gets a **seat colour** (seat 0 to 3). It colours their avatar, their name tag and, later, their pointer and marks on a shared screen (#6), so "who is that" is answered by colour everywhere.
+- Every person in a meeting gets a **seat colour** (seat 0 to 3). It colours their avatar, their name tag, and their pointer and marks on a shared screen, so "who is that" is answered by colour everywhere.
 - **The room dims the lights.** Home, lobby and the other pages follow the system theme, light or dark. The meeting itself is always on the dark stage palette, whatever the theme, so faces and shared screens are the brightest thing on screen.
 
 Not a Zoom or Meet clone: no blue, no grey toolbars, no generic cards. Warm paper and ink, one loud colour, chunky outlined controls, big friendly type.
@@ -117,6 +117,7 @@ Each lives in `web/src/lib/ui/` (generic) or `web/src/lib/room/` (the meeting).
 - **Countdown**: days, hours, minutes and seconds in Bricolage digits with `font-variant-numeric: tabular-nums`; announces only the minute changes to screen readers.
 - **Tile** (meeting): video or the person's initial on their seat colour, a name tag bottom left, icons for muted / camera off / weak connection, the speaking ring.
 - **ControlBar** (meeting): mic, camera, share screen, more (devices, invite, host controls), leave. Pill of round buttons on the stage; a control that is off is shown filled in `--ink` on light-ink with a strike icon and says so in its label ("Turn microphone on").
+- **Annotation palette** (meeting, while a screen is shared): a small pill at the top of the shared screen with Pointer, Pen, Arrow, Highlighter, Clear and, for the person sharing, a switch to let the others point and draw. The tool in hand is filled with your seat colour. With no tool picked the screen takes no clicks. Pointer: a dot in the seat colour with a 2 px ink ring and the name on a seat-colour tag; marks have a soft ink edge so a light colour reads on a white document. See [annotations.md](annotations.md).
 - **Sheet**: a panel from the right on desktop and from the bottom on phones (people, waiting room, settings).
 
 ## Layout of the meeting
@@ -161,7 +162,7 @@ Buttons say the action, as a verb: "Start a meeting", "Join now", "Copy link", "
 - Everything works with the keyboard alone, in a visible order; the focus ring is 3 px `--focus` with a 2 px offset, on every interactive element, never removed.
 - Every control has a visible label or, for icon buttons, an `aria-label` that says the action and a tooltip with the same words and its shortcut.
 - Meeting events (someone joined, left, wants in, was admitted; you are muted; reconnecting) are announced in an `aria-live="polite"` region; errors that stop you in `role="alert"`.
-- Keyboard shortcuts in the meeting: `M` microphone, `V` camera, `S` share screen, `?` lists them. Never on a single key while typing in a field.
+- Keyboard shortcuts in the meeting: `M` microphone, `V` camera, `S` share screen, `?` lists them; on a shared screen `P` pointer, `D` pen, `A` arrow, `H` highlighter, `Esc` puts the tool down. Never on a single key while typing in a field.
 - Colour is never the only signal: muted has an icon, speaking has a ring and the name tag says "speaking" to screen readers only when it starts, quality has a word.
 - Zoom to 200 % keeps every page usable; nothing scrolls sideways at 320 px.
 

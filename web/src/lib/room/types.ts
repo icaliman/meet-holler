@@ -2,6 +2,7 @@
 // @packstub/holler) and the dev demo (demo.svelte.ts) both implement it.
 
 import type { CallState, ConnectionQuality, DeviceKind, DeviceList } from '@packstub/holler'
+import type { Annotations } from '../annotate/annotations.svelte'
 import type { PollMeeting } from '../holler'
 import type { WaitingGuest } from '../types'
 import type { Voice } from './levels'
@@ -37,6 +38,8 @@ export interface RoomLike {
     readonly hasMicrophone: boolean
     readonly canShare: boolean
     readonly speaker: string | null
+    /** The pointer and marks on a shared screen (#6); absent where nothing is wired up. */
+    readonly annotations?: Annotations | null
 
     toggleMic(): void
     toggleCamera(): void

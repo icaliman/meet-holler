@@ -1,6 +1,7 @@
 import { env, exports } from 'cloudflare:workers'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { iceServers } from '../worker/holler/ice'
+import { MAX_PENDING_SIGNALS, MAX_SIGNAL_BYTES } from '../worker/holler/routes'
 import { api, createMeeting, joined, row, rows } from './helpers'
 
 afterEach(() => {
@@ -64,13 +65,34 @@ describe('the call of a meeting', () => {
         const first = await answer(code, ion!)
         expect(first.status).toBe(200)
         expect(first.body).toMatchObject({ status: 'ringing', joined: true, answered_at: null })
-        expect(first.body.peers).toEqual([{ id: ana!.id, name: 'Ana', avatar: null, seat: 1, status: 'ringing', claimed: false, seen_ago: null }])
+        expect(first.body.peers).toEqual([{ id: ana!.id, name: 'Ana', avatar: null, seat: 1, role: 'guest', status: 'ringing', claimed: false, seen_ago: null }])
 
         const second = await answer(code, ana!)
         expect(second.body).toMatchObject({ status: 'active', role: 'callee', seat: 1, joined: true, answered_at: expect.any(String) })
-        expect(second.body.peers).toEqual([{ id: ion!.id, name: 'Ion', avatar: null, seat: 0, status: 'joined', claimed: true, seen_ago: 0 }])
+        expect(second.body.peers).toEqual([{ id: ion!.id, name: 'Ion', avatar: null, seat: 0, role: 'host', status: 'joined', claimed: true, seen_ago: 0 }])
         expect(second.body.peer).toEqual({ id: ion!.id, name: 'Ion', avatar: null })
         expect(second.body.peer_claimed).toBe(true)
+    })
+
+    it('says who the host is in `peers`, from the participant row and nothing a client sends', async () => {
+        const { code, people: [ion, ana, mihai] } = await meeting(['Ana', 'Mihai'])
+        await answer(code, ion!)
+        await answer(code, ana!)
+
+        // A guest that claims to be the host wherever a client can put a word in: it stays a guest.
+        const claimed = await api('POST', `/api/meetings/${code}/holler/answer`, { token: mihai!.token, body: { tab: 'tm', role: 'host', host: true } })
+        expect(claimed.status).toBe(200)
+        await send(code, mihai!, 'state', { role: 'host', host: true })
+        await poll(code, mihai!, { call: code, tab: 'tm', claim: 1, role: 'host' })
+
+        const seen = await claimPoll(code, ana!, `tab-${ana!.id}`)
+        expect(seen.body.call.peers.map((p: any) => [p.name, p.role])).toEqual([['Ion', 'host'], ['Mihai', 'guest']])
+        expect((await claimPoll(code, ion!, `tab-${ion!.id}`)).body.call.peers.map((p: any) => p.role)).toEqual(['guest', 'guest'])
+
+        // People who left keep their role while they are still listed.
+        await holler(code, ion!, 'POST', 'hangup')
+        const after = await claimPoll(code, ana!, `tab-${ana!.id}`)
+        expect(after.body.call.peers.find((p: any) => p.id === ion!.id)).toMatchObject({ status: 'left', role: 'host' })
     })
 
     it('refuses a second answer as not_ringing', async () => {
@@ -202,20 +224,20 @@ describe('signals', () => {
         expect((await send(code, ion!, 'offer', 'sdp')).status).toBe(422)
         expect((await send(code, ion!, 'offer', ['a'])).status).toBe(422)
 
-        const huge = await send(code, ion!, 'offer', { sdp: 'x'.repeat(64 * 1024) })
+        const huge = await send(code, ion!, 'offer', { sdp: 'x'.repeat(MAX_SIGNAL_BYTES) })
         expect(huge.status).toBe(413)
         expect(huge.body.reason).toBe('too_large')
     })
 
-    it('stop at 500 unread from one sender', async () => {
+    it('stop at 200 unread from one sender', async () => {
         const { code, people: [ion, ana] } = await talking()
         const insert = env.DB.prepare(`INSERT INTO signals (meeting_code, to_id, from_id, type, payload, created_at) VALUES (?, ?, ?, 'ice', '{}', ?)`)
-        await env.DB.batch(Array.from({ length: 500 }, () => insert.bind(code, ana!.id, ion!.id, Date.now())))
+        await env.DB.batch(Array.from({ length: MAX_PENDING_SIGNALS }, () => insert.bind(code, ana!.id, ion!.id, Date.now())))
 
         const response = await send(code, ion!, 'ice', {})
         expect(response.status).toBe(429)
         expect(response.body.reason).toBe('too_many')
-        expect((await row('SELECT COUNT(*) AS n FROM signals WHERE to_id = ?', ana!.id)).n).toBe(500)
+        expect((await row('SELECT COUNT(*) AS n FROM signals WHERE to_id = ?', ana!.id)).n).toBe(MAX_PENDING_SIGNALS)
     })
 
     it('flow only to the tab that holds the side', async () => {

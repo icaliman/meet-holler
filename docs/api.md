@@ -13,6 +13,10 @@ The Worker's JSON API, everything under `/api/*`. [ARCHITECTURE.md](ARCHITECTURE
 
 **Bodies** are JSON (`Content-Type: application/json`) both ways, except the `.ics` file and the `leave` beacon (form data).
 
+**Request bodies** are small: at most 16 KB (33 KB for a signal), `413` with `reason: "too_large"` past that, whether or not the request says how long it is.
+
+**Text people type** (names, titles) is stored cleaned: control characters become spaces, characters that show nothing but change how text reads (direction overrides and isolates, zero-width spaces, soft hyphens, blank fillers, tag characters) are removed, whitespace is collapsed and trimmed, and the result is composed (NFC). Joiners that scripts and emoji need are kept. A text that would show nothing counts as empty. Lengths are checked after cleaning. Names are still whatever people call themselves: who the host is comes from `role`, never from a name.
+
 **Times** are ISO 8601 strings in UTC (`2026-12-01T15:00:00.000Z`).
 
 **Meeting codes** are ten characters from `23456789abcdefghjkmnpqrstuvwxyz`. The API always returns the plain form (`abcdefghjk`); show it as `abc-defg-hjk`. Every route takes the code with or without dashes, in any case.
@@ -41,6 +45,10 @@ The Worker's JSON API, everything under `/api/*`. [ARCHITECTURE.md](ARCHITECTURE
 **Auth.** Joining returns a `token`. Send it as `Authorization: Bearer <token>` on every route that needs it. The token is HMAC-signed (`SESSION_SECRET`) and names one participant of one meeting; keep it in `sessionStorage` so each tab is its own participant.
 
 The host is whoever joins with the meeting's `hostKey`. Host routes accept either the host's token (`Authorization: Bearer`) or the key itself (`X-Host-Key: <hostKey>`), so host controls also work from a page that has not joined.
+
+**Same origin only.** The API is for the app served from the same origin. It sends no CORS headers, so a page on another origin cannot read an answer, and it refuses (`403 forbidden`) any request that changes something (everything but `GET`) whose `Origin` is another origin or whose `Sec-Fetch-Site` is `cross-site`. A client that sends neither header (a script, `curl`) is not affected. JSON bodies must be sent as `Content-Type: application/json` (`422 invalid` otherwise). There are no cookies.
+
+**Headers on every answer:** `Cache-Control: no-store`, `X-Content-Type-Options: nosniff`, `Referrer-Policy: no-referrer`, `X-Frame-Options: DENY`, `Cross-Origin-Resource-Policy: same-origin` and a `Content-Security-Policy` that allows nothing (`default-src 'none'; frame-ancestors 'none'`). The pages get theirs (the app's Content-Security-Policy, `Permissions-Policy` for the camera, the microphone and screen capture) from `web/public/_headers`.
 
 **Rate limits.** A client is its address for IPv4 and its /64 for IPv6 (one home has a whole /64).
 
@@ -126,7 +134,8 @@ A calendar file (`text/calendar`, `attachment; filename="meeting-<code>.ics"`) f
 { "name": "Mihai", "passcode": "tulip-42", "hostKey": null }
 ```
 
-- `name`: 1 to 40 characters after trimming.
+- `name`: 1 to 40 characters after cleaning (see [Conventions](#conventions)).
+- A `passcode` longer than 64 characters or a `hostKey` longer than 128 is `422 invalid`: it cannot be right, and is not counted as a wrong guess.
 - `passcode`: for a private meeting. Not needed with a valid `hostKey`.
 - `hostKey`: makes this participant the host. A wrong `hostKey` is `403 forbidden` (it is never silently ignored).
 
@@ -255,6 +264,7 @@ The `call` object is Holler's (holler-js README, "The signaling interface"), wit
 | `seat` | join order (admission order for the waiting room), starting at 0; only the order matters: between two people the lower seat makes the offer |
 | `joined` | whether I answered and am in the call |
 | `peers` | everyone else in the call (`ringing` = admitted, still on the camera prompt; `joined`; `on_hold`), plus people who left in the last minute (`left`, `declined`, `missed`, `dropped`) so clients see them go |
+| `peers[].role` | `host` or `guest`: who joined with the meeting's `hostKey`. An addition to Holler's peer, set by the Worker from the participant's record and never from anything a client sends; the app uses it to decide whose word counts as the host's between browsers (clearing everyone's marks, [annotations.md](annotations.md)). Optional for clients: without it nobody is taken for the host |
 | `answered_at` | when the call first had two people |
 
 Why `ringing` while alone: Holler ends a call that drops below two people, and a client alone in an `active` call would decide its peer is lost and hang up after 15 seconds. A meeting outlives its people, so a lone participant sees the call as `ringing` (state `calling` or `connecting`), which keeps the client waiting quietly; the app shows "Waiting for others" from an empty `peers` list. See the known issue under [Holler and a lone participant](#holler-and-a-lone-participant).
@@ -278,7 +288,7 @@ All under `/api/meetings/:code/holler`, with the token.
 | `GET` | `/ice` | | `{ iceServers, iceTransportPolicy }`, never cached |
 | `POST` | `/start` | | `422 not_allowed`: nobody is rung in a meeting |
 
-Signals: `type` is one of `offer`, `answer`, `ice`, `reset`, `state`; `payload` an object up to 64 KB (`413 too_large`); at most 500 of my signals unread at once (`429 too_many`). `to` must be someone in the call (`422 not_allowed`). A signal to everyone goes to every participant who is `ringing` or `joined` (not `on_hold`: they connect afresh when they resume). Signalling after the meeting ended is `410 ended`; signalling before I answered is `422 not_allowed`.
+Signals: `type` is one of `offer`, `answer`, `ice`, `reset`, `state`; `payload` an object up to 32 KB (`413 too_large`); at most 200 of my signals, and 128 KB of them, unread at once in a meeting (`429 too_many`). A signal nobody read within a minute is deleted (by the next signal sent in that meeting, and by a sweep every 15 minutes). `to` must be someone in the call (`422 not_allowed`). A signal to everyone goes to every participant who is `ringing` or `joined` (not `on_hold`: they connect afresh when they resume). Signalling after the meeting ended is `410 ended`; signalling before I answered is `422 not_allowed`.
 
 ### Polling
 
@@ -366,7 +376,7 @@ At 3 s polls once connected (1 s for the first ~15 s), for each meeting length:
 | 4 people, 60 min | ~4,950 | ~1,570 | **~20** |
 | 2 people, 60 min | ~2,450 | ~670 | **~40** |
 
-Roughly **80 participant-hours a day** at 3 s polls (about 140 at 5 s); at Holler's default 1 s it would be under 28. The D1 write limit would allow about 330 participant-hours and reads about 270, so neither binds. The daily cron costs a few hundred rows at most.
+Roughly **80 participant-hours a day** at 3 s polls (about 140 at 5 s); at Holler's default 1 s it would be under 28. The D1 write limit would allow about 330 participant-hours and reads about 270, so neither binds. The daily cron costs a few hundred rows at most; the sweep of unread signals every 15 minutes reads the few rows of the signals table and usually writes nothing.
 
 A waiting guest costs 720–1,200 requests an hour at 3–5 s polls, so keep the waiting room poll at 5 s.
 
@@ -382,6 +392,7 @@ Relative to [ARCHITECTURE.md](ARCHITECTURE.md):
 - Host routes also accept `X-Host-Key` instead of the host's token.
 - Error bodies also carry `message` and `reason` at the top level (for `HttpSignaling`).
 - The Holler poll also returns `meeting` (with the waiting list for the host).
+- Each entry of `peers` also carries `role` (`host` or `guest`).
 - The call does not end when people leave, only when the host ends it (or the cleanup does); the contract said "or the last person leaves". An empty meeting stays joinable until the daily cleanup ends it after a day without anyone in it.
 - `seat` is join order but keeps counting (0, 1, 2, … including people who left), rather than 0..3.
 
