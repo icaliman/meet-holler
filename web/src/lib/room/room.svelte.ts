@@ -2,6 +2,8 @@
 // controls over the API. Components read it through RoomLike (types.ts).
 
 import type { CallClient, CallState, DeviceKind, DeviceList, Peer } from '@packstub/holler'
+import { Annotations } from '../annotate/annotations.svelte'
+import { hollerWire } from '../annotate/wire'
 import { api } from '../api'
 import { clientFor, type PollMeeting } from '../holler'
 import { announce } from '../ui/announce.svelte'
@@ -60,6 +62,7 @@ export class Room implements RoomLike {
     hasCamera = $state(true)
     hasMicrophone = $state(true)
     speaker = $state<string | null>(null)
+    readonly annotations: Annotations
     readonly canShare = typeof navigator !== 'undefined' && typeof navigator.mediaDevices?.getDisplayMedia === 'function'
 
     private client: CallClient
@@ -94,6 +97,7 @@ export class Room implements RoomLike {
             onMeeting: (meeting) => this.meetingChanged(meeting),
         })
         this.meter = new LevelMeter((voices) => { this.voices = voices })
+        this.annotations = new Annotations({ wire: hollerWire(this.client), me: { id: options.me.id, isHost: this.isHost } })
 
         this.client.setMuted(this.muted)
         this.client.setCameraOff(this.cameraOff)
@@ -186,6 +190,7 @@ export class Room implements RoomLike {
                 quality: p.quality,
             }))
         this.people = [mine, ...others]
+        this.annotations.rosterChanged(this.people.map(({ id, name, seat, me, sharing }) => ({ id, name, seat, me, sharing })))
         this.muted = c.muted
         this.cameraOff = c.cameraOff
         this.sharing = c.sharing
@@ -346,6 +351,7 @@ export class Room implements RoomLike {
     private cleanUp(): void {
         removeEventListener('pagehide', this.onPageHide)
         this.meter.destroy()
+        this.annotations.destroy()
         for (const id of this.waitingToasts.values()) dismiss(id)
         this.waitingToasts.clear()
     }
