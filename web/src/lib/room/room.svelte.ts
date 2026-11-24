@@ -24,6 +24,8 @@ export interface RoomOptions {
      * still polling, so the trouble was on my side; otherwise they had all gone quiet.
      */
     onEnded: (reason: string, othersAlive: boolean) => void
+    /** Relay signaling through the host: the meeting says so (`relays()` in ../holler). */
+    relay?: boolean
     /** The client to use (tests); made from the options otherwise. */
     client?: CallClient
 }
@@ -92,6 +94,9 @@ export class Room implements RoomLike {
             video: this.hasCamera,
             devices: options.devices,
             onMeeting: (meeting) => this.meetingChanged(meeting),
+            relay: options.relay ?? false,
+            // Nothing on screen changes with it; the attribute is there to look at (and for tests).
+            onRelayMode: (mode) => { document.documentElement.dataset.relay = mode },
         })
         this.meter = new LevelMeter((voices) => { this.voices = voices })
 
@@ -344,6 +349,7 @@ export class Room implements RoomLike {
     }
 
     private cleanUp(): void {
+        delete document.documentElement.dataset.relay
         removeEventListener('pagehide', this.onPageHide)
         this.meter.destroy()
         for (const id of this.waitingToasts.values()) dismiss(id)

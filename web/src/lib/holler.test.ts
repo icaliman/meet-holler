@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { routes, signalingFor } from './holler'
+import { HttpSignaling, RelaySignaling } from '@packstub/holler'
+import { CHANNELS, clientFor, POLL, POLL_CONNECTED, relayedSignalingFor, relays, routes, signalingFor } from './holler'
 import { createApi } from './api'
 import { MockStore } from '../../dev/mock-store'
 import { installHoller } from '../../dev/mock-holler'
@@ -87,5 +88,58 @@ describe('Holler signaling for a meeting', () => {
         const { code, guest } = await meetingWithTwo()
         const b = signalingFor(code, guest.token, undefined, fetch)
         await expect(b.answer(code, 'tb')).rejects.toMatchObject({ status: 403 })
+    })
+
+    describe('relaying through the host', () => {
+        const inner = (client: unknown) => client as { signaling: unknown, channelLabels: string[], pollIntervals: { active: number } }
+
+        beforeEach(() => localStorage.clear())
+
+        it('is on only for a meeting that says so, and off for a browser that switched it off', () => {
+            expect(relays({ relay: 'host' })).toBe(true)
+            expect(relays({ relay: null })).toBe(false)
+            expect(relays({})).toBe(false)
+            expect(relays(null)).toBe(false)
+
+            localStorage.setItem('meet:relay', 'off')
+            expect(relays({ relay: 'host' })).toBe(false)
+        })
+
+        it('leaves the client as it was without it: HttpSignaling, the app\'s channels, the old poll pace', async () => {
+            const { code, host } = await meetingWithTwo()
+            const client = clientFor({ code, token: host.token, fetch })
+
+            expect(inner(client).signaling).toBeInstanceOf(HttpSignaling)
+            expect(inner(client).channelLabels).toEqual(CHANNELS)
+            client.dispatchEvent(new CustomEvent('statechange', { detail: { state: 'active' } }))
+            expect(inner(client).pollIntervals.active).toBe(POLL_CONNECTED)
+            client.dispatchEvent(new CustomEvent('statechange', { detail: { state: 'connecting' } }))
+            expect(inner(client).pollIntervals.active).toBe(POLL.active)
+            client.destroy()
+        })
+
+        it('wraps the signaling and adds its channel after the app\'s own', async () => {
+            const { code, host } = await meetingWithTwo()
+            const modes: string[] = []
+            const client = clientFor({ code, token: host.token, fetch, relay: true, onRelayMode: (mode) => modes.push(mode) })
+
+            expect(inner(client).signaling).toBeInstanceOf(RelaySignaling)
+            expect(inner(client).channelLabels).toEqual([...CHANNELS, 'holler:relay'])
+            // Not in a call: fast, like every tab that is connecting.
+            client.dispatchEvent(new CustomEvent('peers', { detail: { peers: [] } }))
+            expect(inner(client).pollIntervals.active).toBe(POLL.active)
+            client.destroy()
+        })
+
+        it('works against a server that does not relay: it polls, and the room still gets the meeting', async () => {
+            const { code, host } = await meetingWithTwo()
+            const seen = vi.fn()
+            const { relay } = relayedSignalingFor(code, host.token, seen, fetch)
+
+            const poll = await relay.poll({ call: code, tab: 't1', claim: true })
+            expect(poll.call).toMatchObject({ id: code, status: 'ringing' })
+            expect(relay.mode).toBe('polling')
+            await vi.waitFor(() => expect(seen).toHaveBeenCalledTimes(1))
+        })
     })
 })
