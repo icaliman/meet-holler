@@ -8,7 +8,7 @@
     import { rememberCreated } from '../../lib/created'
     import { rememberHostKey, savedName, rememberName } from '../../lib/storage'
     import { navigate } from '../../lib/router.svelte'
-    import { format } from '../../lib/code'
+    import { meetingPath } from '../../lib/code'
     import { dateInputValue, nextSlot, timeInputValue, timeZone } from '../../lib/time'
     import { DURATIONS, durationLabel, suggestPasscode, toInput, validate, type ScheduleErrors, type ScheduleValues } from '../../lib/schedule'
 
@@ -54,7 +54,7 @@
             rememberHostKey(meeting.code, hostKey)
             if (values.hostName.trim()) rememberName(values.hostName)
             rememberCreated({ meeting, passcode: input.passcode ?? null })
-            navigate(`/${format(meeting.code)}/ready`)
+            navigate(`${meetingPath(meeting.code)}/ready`)
         } catch (error) {
             failure = explain(error)
         } finally {

@@ -5,7 +5,7 @@
     import Notice from '../lib/ui/Notice.svelte'
     import { api } from '../lib/api'
     import { createdFor } from '../lib/created'
-    import { format, hostUrl, meetingUrl } from '../lib/code'
+    import { format, hostUrl, meetingPath, meetingUrl } from '../lib/code'
     import { explain } from '../lib/messages'
     import { hostKeyFor } from '../lib/storage'
     import { durationLabel } from '../lib/schedule'
@@ -86,7 +86,7 @@
             {/if}
 
             <div class="buttons">
-                <Button variant="primary" href="/{format(code)}" icon="arrowRight" size="lg">Start now</Button>
+                <Button variant="primary" href={meetingPath(code)} icon="arrowRight" size="lg">Start now</Button>
                 {#if meeting?.scheduledAt}
                     <Button variant="secondary" href={api.icsUrl(code)} download="{format(code)}.ics" icon="calendar">Add to calendar</Button>
                 {/if}

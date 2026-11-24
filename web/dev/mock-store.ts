@@ -3,12 +3,12 @@
 // so where they differ the Worker wins and this file is fixed.
 //
 // Seeded meetings, to look at every state without setting it up:
-//   /xxx-ende-ddd   ended
-//   /xxx-fuuu-uuu   full (four people in)
-//   /xxx-sxhe-dxx   scheduled in two hours (countdown)
-//   /xxx-pass-xxx   private, passcode 1234
-//   /xxx-wayt-xxx   waiting room on
-//   /xxx-xxck-xxx   locked
+//   /m/xxx-ende-ddd   ended
+//   /m/xxx-fuuu-uuu   full (four people in)
+//   /m/xxx-sxhe-dxx   scheduled in two hours (countdown)
+//   /m/xxx-pass-xxx   private, passcode 1234
+//   /m/xxx-wayt-xxx   waiting room on
+//   /m/xxx-xxck-xxx   locked
 
 export interface MockParticipant {
     id: string
@@ -325,7 +325,7 @@ export class MockStore {
             'BEGIN:VCALENDAR', 'VERSION:2.0', 'PRODID:-//meet-holler//mock//EN', 'BEGIN:VEVENT',
             `UID:${meeting.code}@meet-holler.mock`, `DTSTAMP:${stamp(new Date(this.now()))}`,
             `DTSTART:${stamp(start)}`, `DTEND:${stamp(end)}`,
-            `SUMMARY:${meeting.title ?? 'Meeting'}`, `URL:http://localhost:5173/${meeting.code}`,
+            `SUMMARY:${meeting.title ?? 'Meeting'}`, `URL:http://localhost:5173/m/${meeting.code}`,
             'END:VEVENT', 'END:VCALENDAR', '',
         ].join('\r\n')
 

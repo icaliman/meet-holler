@@ -33,7 +33,7 @@ describe('home', () => {
 
         await waitFor(() => expect(router.route.name).toBe('meeting'))
         const code = (router.route as { code: string }).code
-        expect(location.pathname).toMatch(/^\/[2-9a-z]{3}-[2-9a-z]{4}-[2-9a-z]{3}$/)
+        expect(location.pathname).toMatch(/^\/m\/[2-9a-z]{3}-[2-9a-z]{4}-[2-9a-z]{3}$/)
         expect(hostKeyFor(code)).toBe(store.meetings.get(code)?.hostKey)
     })
 
@@ -55,7 +55,7 @@ describe('home', () => {
         expect(input.value).toBe('abc-defg-hjk')
 
         await userEvent.click(screen.getByRole('button', { name: 'Join' }))
-        expect(location.pathname).toBe('/abc-defg-hjk')
+        expect(location.pathname).toBe('/m/abc-defg-hjk')
     })
 
     it('takes a pasted link', async () => {

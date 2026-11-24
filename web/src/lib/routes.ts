@@ -11,7 +11,7 @@ export type Route =
 export function match(pathname: string): Route {
     let parts = pathname.split('/').filter(Boolean)
     if (parts.length === 0) return { name: 'home' }
-    // /m/abc-defg-hjk is the same meeting (the Worker's .ics links use it).
+    // Meetings live at /m/abc-defg-hjk; a bare /abc-defg-hjk (typed by hand) works too.
     if (parts[0] === 'm' && parts.length > 1) parts = parts.slice(1)
 
     if (isCode(parts[0])) {

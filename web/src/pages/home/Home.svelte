@@ -7,7 +7,7 @@
     import Hero from './Hero.svelte'
     import ScheduleForm from './ScheduleForm.svelte'
     import { api } from '../../lib/api'
-    import { check, extractCode, format } from '../../lib/code'
+    import { check, extractCode, meetingPath } from '../../lib/code'
     import { explain } from '../../lib/messages'
     import { navigate } from '../../lib/router.svelte'
     import { rememberHostKey } from '../../lib/storage'
@@ -29,7 +29,7 @@
         try {
             const { meeting, hostKey } = await api.createMeeting({ visibility: 'public', waitingRoom: false })
             rememberHostKey(meeting.code, hostKey)
-            navigate(`/${format(meeting.code)}`)
+            navigate(meetingPath(meeting.code))
         } catch (error) {
             startError = explain(error)
         } finally {
@@ -48,7 +48,7 @@
         // A pasted host link keeps its key (#host=…), so it still makes you the host.
         const host = /#host=([^&\s]+)/.exec(code)
         if (host) rememberHostKey(found, decodeURIComponent(host[1]))
-        navigate(`/${format(found)}`)
+        navigate(meetingPath(found))
     }
 
     async function openSchedule() {

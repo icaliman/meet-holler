@@ -25,6 +25,7 @@ describe('meeting codes', () => {
         expect(extractCode('https://meet.xlite.dev/abc-defg-hjk')).toBe('abcdefghjk')
         expect(extractCode('https://meet.xlite.dev/abc-defg-hjk#host=secret')).toBe('abcdefghjk')
         expect(extractCode('meet.xlite.dev/abcdefghjk')).toBe('abcdefghjk')
+        expect(extractCode('https://meet.xlite.dev/m/abc-defg-hjk')).toBe('abcdefghjk')
         expect(extractCode('  abc defg hjk ')).toBe('abcdefghjk')
         expect(extractCode('https://meet.xlite.dev/')).toBeNull()
         expect(extractCode('')).toBeNull()
@@ -39,7 +40,7 @@ describe('meeting codes', () => {
     })
 
     it('builds the links people share', () => {
-        expect(meetingUrl('abcdefghjk', 'https://meet.xlite.dev')).toBe('https://meet.xlite.dev/abc-defg-hjk')
-        expect(hostUrl('abcdefghjk', 'k/y', 'https://meet.xlite.dev')).toBe('https://meet.xlite.dev/abc-defg-hjk#host=k%2Fy')
+        expect(meetingUrl('abcdefghjk', 'https://meet.xlite.dev')).toBe('https://meet.xlite.dev/m/abc-defg-hjk')
+        expect(hostUrl('abcdefghjk', 'k/y', 'https://meet.xlite.dev')).toBe('https://meet.xlite.dev/m/abc-defg-hjk#host=k%2Fy')
     })
 })

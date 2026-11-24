@@ -38,7 +38,8 @@ export function extractCode(input: string): string | null {
     if (/^https?:\/\//i.test(text) || text.includes('/')) {
         try {
             const url = new URL(/^https?:\/\//i.test(text) ? text : `https://${text.replace(/^\/+/, 'x.invalid/')}`)
-            candidate = url.pathname.split('/').filter(Boolean)[0] ?? ''
+            const parts = url.pathname.split('/').filter(Boolean)
+            candidate = (parts[0] === 'm' ? parts[1] : parts[0]) ?? ''
         } catch {
             return null
         }
@@ -67,9 +68,14 @@ export function check(input: string): string | null {
     return `A code has ${CODE_LENGTH} letters and numbers. This one has ${bare.length}.`
 }
 
-/** The link people share: https://meet.xlite.dev/abc-defg-hij */
+/** The meeting's path in the app: /m/abc-defg-hij (the Worker's .ics links use the same). */
+export function meetingPath(code: string): string {
+    return `/m/${format(code)}`
+}
+
+/** The link people share: https://meet.xlite.dev/m/abc-defg-hij */
 export function meetingUrl(code: string, origin = globalThis.location?.origin ?? ''): string {
-    return `${origin}/${format(code)}`
+    return `${origin}${meetingPath(code)}`
 }
 
 /** The link that makes whoever opens it the host, from any device: the key is in the fragment, so it never reaches a server log. */
