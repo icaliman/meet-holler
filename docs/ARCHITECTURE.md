@@ -54,6 +54,8 @@ The token is an HMAC-signed value (`SESSION_SECRET`, a Worker secret) naming mee
 
 Free plan: 100k Worker requests/day, D1 100k row writes and 5M row reads/day. Polling is the cost. Rules: poll only while in a meeting or waiting; slow down (e.g. 1 s while negotiating, 3-5 s once media is connected, since media does not need signaling); one D1 `batch` per poll; write heartbeats rarely; static assets are free and do not count. A daily cleanup cron removes ended meetings and stale signals. Document the honest numbers (meetings/day at a given length) in the README.
 
+Optionally, the host's browser is the only one that polls and relays signaling to the guests over WebRTC data channels (`RELAY_SIGNALING`, off by default): [relay-signaling.md](relay-signaling.md).
+
 STUN only by default (`stun:stun.cloudflare.com:3478`); an optional TURN (Cloudflare Realtime TURN) through secrets, served by the `ice` route, for restrictive networks.
 
 ## Design brief

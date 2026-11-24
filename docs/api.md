@@ -7,6 +7,7 @@ The Worker's JSON API, everything under `/api/*`. [ARCHITECTURE.md](ARCHITECTURE
 - [Joining and the waiting room](#joining-and-the-waiting-room)
 - [Host controls](#host-controls)
 - [Holler signaling](#holler-signaling)
+- [Relayed signaling](#relayed-signaling)
 - [Free-plan budget](#free-plan-budget)
 
 ## Conventions
@@ -63,7 +64,8 @@ What `GET /api/meetings/:code` returns, and `meeting` in other answers:
     "locked": false,
     "participantCount": 0,
     "capacity": 4,
-    "hostName": "Ana"
+    "hostName": "Ana",
+    "relay": null
 }
 ```
 
@@ -71,6 +73,7 @@ What `GET /api/meetings/:code` returns, and `meeting` in other answers:
 - `scheduledAt` and `durationMin` are `null` for an instant meeting.
 - `participantCount` counts the people in the meeting (admitted, whether or not their video is up yet), not the ones in the waiting room.
 - `title` and `hostName` may be `null`.
+- `relay`: `"host"` when the meeting relays signaling through its host ([Relayed signaling](#relayed-signaling)), otherwise `null`. Decided when the meeting is created, from the `RELAY_SIGNALING` variable.
 
 ### `POST /api/meetings`
 
@@ -308,7 +311,37 @@ The token lives in `sessionStorage`, so a reload keeps it. On load, if `/me` say
 
 `GET /ice` returns the STUN server (`STUN_URL`, `stun:stun.cloudflare.com:3478`) and, when the `TURN_KEY_ID` and `TURN_KEY_API_TOKEN` secrets are set, short-lived Cloudflare Realtime TURN credentials (24 hours) fetched per call. If the TURN service does not answer, STUN alone is returned. `iceTransportPolicy` is `all`.
 
+## Relayed signaling
+
+Off unless `RELAY_SIGNALING` is `"host"` when the meeting is created (`relay: "host"` on the meeting). [relay-signaling.md](relay-signaling.md) has the protocol, the fallbacks and the numbers; this is what the routes add. A meeting with `relay: null` ignores the parameters and returns none of the fields.
+
+**`GET /poll`** takes two more parameters:
+
+| Parameter | From | Means |
+| --- | --- | --- |
+| `relay=1` | a tab that uses `RelaySignaling` | this tab can take signaling over a data channel; remembered per participant (`relay` on peers) |
+| `present=<id>,<id>` | the hub | the participants connected to it; with `relay=1`, `call=`, `tab=` and `claim=1`, at most four ids |
+
+**The call** gets `hub` (boolean: I am the hub), and every entry of `peers` gets `hub` (they are) and `relay` (`true` or `false` once their tab has polled, `null` before). The hub is the host while it is in the call, its tab relays and holds its side (polled within the last 20 seconds); with two hosts in, the one with the lower seat. Nobody else is ever the hub.
+
+**The hub's poll is the heartbeat of the people in `present`**: their `seen_at` is written at most every 10 seconds, as their own poll would. Only for participants who are `joined`, whose tab relays and has not sent the `leave` beacon; a poll by anyone but the hub, or from a tab of the host that does not hold its side, changes nothing for them.
+
+**The hub's answer** carries one more field:
+
+```json
+"relay": {
+    "views": { "Qm9pX3a1c2Zk": { "call": { … }, "incoming": null, "on_hold": null, "meeting": { … } } },
+    "pending": ["Qm9pX3a1c2Zk"]
+}
+```
+
+`views[id]` is what a poll by that participant would answer, without the signals (a removed guest's says `ended` with `end_reason: "removed"`; someone who is no longer in has `call: null`). `pending` lists who among them has signals waiting in D1, sent by a tab that does not relay. The host's poll right after the meeting ended still has `relay`, so the guests hear it from the host.
+
+Requests are unchanged otherwise: signals posted to `/signals` are delivered to their recipient's own poll, never to the hub.
+
 ## Free-plan budget
+
+With [relayed signaling](#relayed-signaling) on, a connected meeting costs one poll per host poll whatever its size; the numbers for that are in [relay-signaling.md](relay-signaling.md#what-it-saves). Everything below is a meeting where every tab polls.
 
 The Workers free plan allows, per day: **100,000 Worker requests**, and on D1 **100,000 rows written** and **5,000,000 rows read** (static assets are free and unlimited). Polling dominates everything, so the numbers below come from it.
 
@@ -371,8 +404,10 @@ Relative to [ARCHITECTURE.md](ARCHITECTURE.md):
 - The call does not end when people leave, only when the host ends it (or the cleanup does); the contract said "or the last person leaves". An empty meeting stays joinable until the daily cleanup ends it after a day without anyone in it.
 - `seat` is join order but keeps counting (0, 1, 2, … including people who left), rather than 0..3.
 
+- The meeting object has `relay`, the poll takes `relay` and `present` and may return `hub`, `relay` on peers and `relay` in the answer ([Relayed signaling](#relayed-signaling)); migration `0003_relay.sql`.
+
 ## Known issues
 
 ### Holler and a lone participant
 
-`@packstub/holler` 1.0 was built for calls that end once fewer than two people are left. In a meeting, when the second-to-last person leaves, the one who stays can briefly see their connection to the leaver drop before the next poll says the leaver is gone; the client then arms its 15-second "reconnecting" timer while the call is still `active`, and that timer is not cleared when the call turns back to `ringing`. It then hangs up as `dropped`. The app should treat `ended` with `dropped` or `failed` while the meeting is still open and this person did not click Leave as "everyone left": join again (`POST /join`, then `resumeCall`). A small change in holler-js (clear the drop timer in `refreshState()` when the call is not `active`) would remove the workaround. `test/call-client.test.ts` reproduces it with the real client.
+`@packstub/holler` 1.0 was built for calls that end once fewer than two people are left. In a meeting, when the second-to-last person leaves, the one who stays could briefly see their connection to the leaver drop before the next poll said the leaver was gone; the client then armed its 15-second "reconnecting" timer while the call was still `active`, never cleared it when the call turned back to `ringing`, and hung up as `dropped`. Fixed in holler-js (packstub/holler-js#16, in the build this repo installs): the call rings again and the client waits. `test/call-client.test.ts` holds it. The app's workaround (join again after `dropped` or `failed` while the meeting is open) stays as a safety net.
