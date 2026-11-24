@@ -128,29 +128,43 @@ meetings.get('/:code', async (c) => {
 // ---- join --------------------------------------------------------------------
 
 /**
- * Wrong passcodes are counted on the meeting itself (one row written per
- * wrong guess, nothing for a right one), so the cap holds across every Worker
- * instance: PASSCODE_MAX_FAILURES per PASSCODE_WINDOW_MS.
+ * Wrong passcodes are counted on the meeting itself, so the cap holds across
+ * every Worker instance: PASSCODE_MAX_FAILURES per PASSCODE_WINDOW_MS.
+ *
+ * Every guess takes one of the window's tries *before* it is checked, in one
+ * statement that refuses once they are used up, and a right passcode gives its
+ * try back. Counting only after a wrong answer let any number of guesses sent
+ * at the same moment all be checked against a count that had not moved yet.
  */
 async function checkPasscode(db: D1Database, meeting: MeetingRow, passcode: string | null, now: number): Promise<void> {
-    const windowOpen = meeting.pass_window !== null && meeting.pass_window > now - PASSCODE_WINDOW_MS
-    if (windowOpen && meeting.pass_failures >= PASSCODE_MAX_FAILURES) {
+    const tooMany = (windowStart: number | null) => {
         const error = new ApiError('rate_limited', 'Too many wrong passcodes for this meeting. Try again in a few minutes.')
-        error.retryAfter = Math.ceil(((meeting.pass_window ?? now) + PASSCODE_WINDOW_MS - now) / 1000)
-        throw error
+        error.retryAfter = Math.max(1, Math.ceil(((windowStart ?? now) + PASSCODE_WINDOW_MS - now) / 1000))
+
+        return error
     }
 
+    const windowOpen = meeting.pass_window !== null && meeting.pass_window > now - PASSCODE_WINDOW_MS
+    if (windowOpen && meeting.pass_failures >= PASSCODE_MAX_FAILURES) throw tooMany(meeting.pass_window)
     if (! passcode) throw new ApiError('passcode_required', 'This meeting needs a passcode.')
-    if (meeting.passcode_hash && await verifyPasscode(passcode, meeting.passcode_hash)) return
 
-    await db.prepare(`
+    const EXPIRED = `(pass_window IS NULL OR pass_window <= ?2 - ${PASSCODE_WINDOW_MS})`
+    const taken = await db.prepare(`
         UPDATE meetings SET
-            pass_failures = CASE WHEN pass_window IS NULL OR pass_window <= ?2 - ${PASSCODE_WINDOW_MS} THEN 1 ELSE pass_failures + 1 END,
-            pass_window = CASE WHEN pass_window IS NULL OR pass_window <= ?2 - ${PASSCODE_WINDOW_MS} THEN ?2 ELSE pass_window END
-        WHERE code = ?1
-    `).bind(meeting.code, now).run()
+            pass_failures = CASE WHEN ${EXPIRED} THEN 1 ELSE pass_failures + 1 END,
+            pass_window = CASE WHEN ${EXPIRED} THEN ?2 ELSE pass_window END
+        WHERE code = ?1 AND (${EXPIRED} OR pass_failures < ${PASSCODE_MAX_FAILURES})
+        RETURNING pass_window
+    `).bind(meeting.code, now).first<{ pass_window: number }>()
+    if (! taken) {
+        const current = await db.prepare('SELECT pass_window FROM meetings WHERE code = ?1').bind(meeting.code).first<{ pass_window: number | null }>()
+        throw tooMany(current?.pass_window ?? null)
+    }
 
-    throw new ApiError('passcode_wrong', 'That passcode is not right.')
+    if (! meeting.passcode_hash || ! await verifyPasscode(passcode, meeting.passcode_hash)) throw new ApiError('passcode_wrong', 'That passcode is not right.')
+
+    // Right: the try goes back, in the window it was taken from.
+    await db.prepare('UPDATE meetings SET pass_failures = MAX(pass_failures - 1, 0) WHERE code = ?1 AND pass_window = ?2').bind(meeting.code, taken.pass_window).run()
 }
 
 meetings.post('/:code/join', rateLimit('join'), durableRateLimit('join'), async (c) => {
