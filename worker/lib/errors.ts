@@ -33,6 +33,8 @@ const STATUS: Record<ErrorCode, ContentfulStatusCode> = {
  */
 export class ApiError extends Error {
     readonly status: ContentfulStatusCode
+    /** Seconds, for `Retry-After` on `rate_limited`. */
+    retryAfter: number | null = null
 
     constructor(
         readonly code: ErrorCode,
