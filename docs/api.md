@@ -71,6 +71,7 @@ What `GET /api/meetings/:code` returns, and `meeting` in other answers:
 - `scheduledAt` and `durationMin` are `null` for an instant meeting.
 - `participantCount` counts the people in the meeting (admitted, whether or not their video is up yet), not the ones in the waiting room.
 - `title` and `hostName` may be `null`.
+- **A private meeting, asked about with only the link**, withholds what it is about and who is in it: `title`, `hostName`, `participantCount` and `locked` are `null`. It still says that it exists, that it needs a passcode, its `status` and its time, so the app can show the passcode field, a countdown or "ended". Whether it is locked or full comes from `POST /join`, after the passcode. The full object goes to the host key and to anyone who got in (below).
 
 ### `POST /api/meetings`
 
@@ -92,17 +93,21 @@ Create a meeting. No auth.
 
 → `201 { "meeting": {…}, "hostKey": "…" }`
 
-`hostKey` is shown once and never again (the server keeps only its SHA-256). Keep it in `localStorage` and put it in the host link (`/m/<code>?host=<hostKey>`, or however the app routes it).
+`hostKey` is shown once and never again (the server keeps only its SHA-256). Keep it in `localStorage` and put it in the host link as a **fragment** (`/m/<code>#host=<hostKey>`): a fragment is never sent to a server, so the key stays out of logs, `Referer` and proxies. Never put it in the query string. A page opened from a host link checks the key (`GET /api/meetings/:code` with `X-Host-Key`) before storing it.
 
 The passcode is stored as a PBKDF2-SHA256 hash with a random salt (30,000 iterations: the free plan allows 10 ms of CPU per request).
 
 ### `GET /api/meetings/:code`
 
-The meeting object. No auth. `404 not_found` for an unknown code; an ended meeting answers `200` with `status: "ended"`.
+The meeting object. No auth needed. `404 not_found` for an unknown code; an ended meeting answers `200` with `status: "ended"`.
+
+For a **private** meeting the object is complete only when the request shows it may know: `X-Host-Key: <hostKey>`, or `Authorization: Bearer <token>` of a participant of this meeting who got past the passcode and was not denied or removed since. A token that shows nothing (another meeting's, an expired one) is not an error: the answer is the withheld object.
+
+`X-Host-Key` is checked on any meeting: a key that is not this meeting's is `403 forbidden`. The app uses that to check a host link before it believes it.
 
 ### `GET /api/meetings/:code.ics`
 
-A calendar file (`text/calendar`, `attachment; filename="meeting-<code>.ics"`) for a scheduled meeting: title, start, end, the join link (`<origin>/m/<abc-defg-hjk>`, the app's meeting route) and, for a private meeting, a line saying a passcode is needed (never the passcode). `404` for an instant meeting.
+A calendar file (`text/calendar`, `attachment; filename="meeting-<code>.ics"`) for a scheduled meeting: title, start, end, the join link (`<origin>/m/<abc-defg-hjk>`, the app's meeting route) and, for a private meeting, a line saying a passcode is needed (never the passcode). `404` for an instant meeting. A private meeting's file has its title and the host's name only for a request that may know them (the same rule as the lookup above); a plain link gets "Private meeting". The app fetches the host's copy with `X-Host-Key` and hands it to the browser as a download, since a link cannot carry a header.
 
 ## Joining and the waiting room
 

@@ -88,20 +88,27 @@ export function meetingStatus(meeting: MeetingRow, now: number): MeetingStatus {
 
 const iso = (ms: number | null) => (ms === null ? null : new Date(ms).toISOString())
 
-export function publicMeeting(meeting: MeetingRow, participantCount: number, now: number) {
+/**
+ * The meeting object of the API. `withheld` is a private meeting as someone
+ * with only the link sees it: that it exists, when it is and that it needs a
+ * passcode, so the app can show the passcode field or the countdown. What it
+ * is about, who hosts it, how many are in and whether it is locked are for
+ * people who got in (or hold the host key): those are `null`.
+ */
+export function publicMeeting(meeting: MeetingRow, participantCount: number, now: number, withheld = false) {
     return {
         code: meeting.code,
-        title: meeting.title,
+        title: withheld ? null : meeting.title,
         visibility: meeting.visibility,
         requiresPasscode: meeting.visibility === 'private',
         waitingRoom: meeting.waiting_room === 1,
         scheduledAt: iso(meeting.scheduled_at),
         durationMin: meeting.duration_min,
         status: meetingStatus(meeting, now),
-        locked: meeting.locked === 1,
-        participantCount,
+        locked: withheld ? null : meeting.locked === 1,
+        participantCount: withheld ? null : participantCount,
         capacity: CAPACITY,
-        hostName: meeting.host_name,
+        hostName: withheld ? null : meeting.host_name,
     }
 }
 

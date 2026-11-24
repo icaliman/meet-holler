@@ -29,17 +29,21 @@ function fold(line: string): string {
     return parts.join('\r\n ')
 }
 
-/** A calendar file for a scheduled meeting. Never carries the passcode. */
-export function meetingIcs(meeting: MeetingRow, origin: string, now: number): string {
+/**
+ * A calendar file for a scheduled meeting. Never carries the passcode, and
+ * with `withheld` (a private meeting, asked for with only the link) neither
+ * the title nor the host's name.
+ */
+export function meetingIcs(meeting: MeetingRow, origin: string, now: number, withheld = false): string {
     const start = meeting.scheduled_at ?? now
     const end = start + (meeting.duration_min ?? 60) * 60_000
     const link = `${origin}/m/${formatCode(meeting.code)}`
-    const title = meeting.title ?? 'Meeting'
+    const title = withheld ? 'Private meeting' : meeting.title ?? 'Meeting'
     const description = [
         `Join: ${link}`,
         `Code: ${formatCode(meeting.code)}`,
         meeting.visibility === 'private' ? 'A passcode is needed: ask the host.' : null,
-        meeting.host_name ? `Host: ${meeting.host_name}` : null,
+        meeting.host_name && ! withheld ? `Host: ${meeting.host_name}` : null,
     ].filter(Boolean).join('\n')
 
     const lines = [

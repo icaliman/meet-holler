@@ -5,7 +5,7 @@ import { ApiError, invalid } from '../lib/errors'
 import { rateLimit } from '../lib/ratelimit'
 import { PASSCODE_MAX_FAILURES, PASSCODE_WINDOW_MS, WAITING_HEARTBEAT_MS, WAITING_STALE_MS } from '../lib/timing'
 import { jsonBody, optionalBoolean, optionalSecret, optionalText, requiredText } from '../lib/validate'
-import { codeFrom, findMeeting, requireHost, requireParticipant, routeCode } from './auth'
+import { codeFrom, findMeeting, mayKnow, requireHost, requireParticipant, routeCode } from './auth'
 import { meetingIcs } from './ics'
 import {
     expireStatement, liveCountStatement, meetingStatus, NEXT_SEAT_SQL, publicMeeting, publicParticipant, ROOM_SQL, waitingEntry,
@@ -110,7 +110,7 @@ meetings.get('/:code', async (c) => {
         const meeting = await findMeeting(c.env.DB, codeFrom(raw.slice(0, -4)))
         if (meeting.scheduled_at === null) throw new ApiError('not_found', 'Only a scheduled meeting has a calendar file.')
 
-        return c.body(meetingIcs(meeting, new URL(c.req.url).origin, now), 200, {
+        return c.body(meetingIcs(meeting, new URL(c.req.url).origin, now, ! await mayKnow(c, meeting)), 200, {
             'Content-Type': 'text/calendar; charset=utf-8',
             'Content-Disposition': `attachment; filename="meeting-${meeting.code}.ics"`,
             'Cache-Control': 'no-store',
@@ -118,6 +118,8 @@ meetings.get('/:code', async (c) => {
     }
 
     const meeting = await findMeeting(c.env.DB, routeCode(c))
+    // A private meeting tells someone with only the link very little (see publicMeeting).
+    if (! await mayKnow(c, meeting)) return c.json(publicMeeting(meeting, 0, now, true))
 
     return c.json(await meetingResponse(c.env.DB, meeting, now))
 })

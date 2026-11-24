@@ -59,6 +59,31 @@ export function requireParticipant(c: Ctx, code: string) {
 }
 
 /**
+ * Whether the request may see a private meeting in full: it carries the host
+ * key, or the token of someone who got into it (past the passcode) and was
+ * not sent away since. A wrong host key is refused, on any meeting, so a
+ * client can check a host link here before believing it; a token that proves
+ * nothing is not an error, the asker is just someone with the link.
+ */
+export async function mayKnow(c: Ctx, meeting: MeetingRow): Promise<boolean> {
+    const hostKey = c.req.header('X-Host-Key')
+    if (hostKey) {
+        if (! safeEqual(await sha256Hex(hostKey), meeting.host_key_hash)) throw new ApiError('forbidden', 'This host link is not valid for this meeting.')
+
+        return true
+    }
+    if (meeting.visibility !== 'private') return true
+
+    const token = bearerToken(c)
+    const claims = token ? await verifyToken(token, c.env.SESSION_SECRET) : null
+    if (! claims || claims.m !== meeting.code) return false
+
+    const me = await c.env.DB.prepare('SELECT status FROM participants WHERE id = ?1 AND meeting_code = ?2').bind(claims.p, meeting.code).first<{ status: string }>()
+
+    return me !== null && me.status !== 'denied' && me.status !== 'removed'
+}
+
+/**
  * The host: the meeting's hostKey in `X-Host-Key`, or the token of the
  * participant who joined with it.
  */
