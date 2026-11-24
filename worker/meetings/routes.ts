@@ -16,6 +16,7 @@ export const meetings = new Hono<{ Bindings: Env }>()
 
 const MAX_SCHEDULE_AHEAD_MS = 366 * 24 * 60 * 60_000
 const SCHEDULE_PAST_GRACE_MS = 5 * 60_000
+const MAX_PASSCODE_LENGTH = 64
 
 const ended = () => new ApiError('ended', 'This meeting has ended.', 'ended')
 const full = () => new ApiError('full', 'This meeting is full: four people are already in it.', 'full')
@@ -42,7 +43,7 @@ meetings.post('/', rateLimit('create'), async (c) => {
     const passcode = optionalSecret(body, 'passcode')
     if (visibility === 'private' && ! passcode) throw invalid('A private meeting needs a passcode.')
     if (visibility === 'public' && passcode) throw invalid('A public meeting has no passcode: make it private to set one.')
-    if (passcode && (passcode.length < 4 || passcode.length > 64)) throw invalid('The passcode must be 4 to 64 characters.')
+    if (passcode && (passcode.length < 4 || passcode.length > MAX_PASSCODE_LENGTH)) throw invalid('The passcode must be 4 to 64 characters.')
 
     const waitingRoom = optionalBoolean(body, 'waitingRoom') ?? false
 
@@ -158,7 +159,8 @@ meetings.post('/:code/join', rateLimit('join'), async (c) => {
 
     const name = requiredText(body, 'name', 40, 'Your name')
     const hostKey = optionalSecret(body, 'hostKey')
-    const passcode = optionalSecret(body, 'passcode')
+    // Longer than a passcode can be: refused here, before PBKDF2 would run on it.
+    const passcode = optionalSecret(body, 'passcode', MAX_PASSCODE_LENGTH)
 
     const meeting = await findMeeting(db, code)
     if (meeting.ended_at !== null) throw ended()

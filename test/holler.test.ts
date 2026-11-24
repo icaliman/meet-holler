@@ -1,6 +1,7 @@
 import { env, exports } from 'cloudflare:workers'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { iceServers } from '../worker/holler/ice'
+import { MAX_PENDING_SIGNALS, MAX_SIGNAL_BYTES } from '../worker/holler/routes'
 import { api, createMeeting, joined, row, rows } from './helpers'
 
 afterEach(() => {
@@ -223,20 +224,20 @@ describe('signals', () => {
         expect((await send(code, ion!, 'offer', 'sdp')).status).toBe(422)
         expect((await send(code, ion!, 'offer', ['a'])).status).toBe(422)
 
-        const huge = await send(code, ion!, 'offer', { sdp: 'x'.repeat(64 * 1024) })
+        const huge = await send(code, ion!, 'offer', { sdp: 'x'.repeat(MAX_SIGNAL_BYTES) })
         expect(huge.status).toBe(413)
         expect(huge.body.reason).toBe('too_large')
     })
 
-    it('stop at 500 unread from one sender', async () => {
+    it('stop at 200 unread from one sender', async () => {
         const { code, people: [ion, ana] } = await talking()
         const insert = env.DB.prepare(`INSERT INTO signals (meeting_code, to_id, from_id, type, payload, created_at) VALUES (?, ?, ?, 'ice', '{}', ?)`)
-        await env.DB.batch(Array.from({ length: 500 }, () => insert.bind(code, ana!.id, ion!.id, Date.now())))
+        await env.DB.batch(Array.from({ length: MAX_PENDING_SIGNALS }, () => insert.bind(code, ana!.id, ion!.id, Date.now())))
 
         const response = await send(code, ion!, 'ice', {})
         expect(response.status).toBe(429)
         expect(response.body.reason).toBe('too_many')
-        expect((await row('SELECT COUNT(*) AS n FROM signals WHERE to_id = ?', ana!.id)).n).toBe(500)
+        expect((await row('SELECT COUNT(*) AS n FROM signals WHERE to_id = ?', ana!.id)).n).toBe(MAX_PENDING_SIGNALS)
     })
 
     it('flow only to the tab that holds the side', async () => {

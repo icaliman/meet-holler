@@ -2,7 +2,7 @@ import { Hono, type Context } from 'hono'
 import { normalizeCode } from '../lib/codes'
 import { randomToken, verifyToken } from '../lib/crypto'
 import { ApiError } from '../lib/errors'
-import { CLAIM_STALE_MS, HEARTBEAT_MS } from '../lib/timing'
+import { CLAIM_STALE_MS, HEARTBEAT_MS, SIGNAL_TTL_MS } from '../lib/timing'
 import { jsonBody } from '../lib/validate'
 import { bearerToken, participantFromToken, routeCode } from '../meetings/auth'
 import { expireStatement, LIVE, LIVE_SQL, type MeetingRow, type ParticipantRow } from '../meetings/model'
@@ -19,8 +19,17 @@ export const holler = new Hono<{ Bindings: Env }>()
 type Ctx = Context<{ Bindings: Env }>
 
 export const SIGNAL_TYPES = ['offer', 'answer', 'ice', 'reset', 'state'] as const
-export const MAX_SIGNAL_BYTES = 64 * 1024
-export const MAX_PENDING_SIGNALS = 500
+/**
+ * What one participant can leave waiting in D1. Signals are read within a
+ * second or three, so anything near these limits is not a call connecting:
+ * an offer with audio, video and a shared screen is 10 to 15 KB, a candidate
+ * a few hundred bytes, and connecting to three people takes about 50 of them.
+ * Without them one person could park megabytes in the database (and in every
+ * poll of the people they are sent to), for the price of a few requests.
+ */
+export const MAX_SIGNAL_BYTES = 32 * 1024
+export const MAX_PENDING_SIGNALS = 200
+export const MAX_PENDING_BYTES = 128 * 1024
 const MAX_SIGNALS_PER_POLL = 100
 
 const notAllowed = (message: string, status: 401 | 403 | 422 = 422) => new ApiError(status === 422 ? 'invalid' : 'forbidden', message, 'not_allowed', status)
@@ -299,29 +308,39 @@ holler.post('/:code/holler/signals', async (c) => {
     if (typeof type !== 'string' || ! (SIGNAL_TYPES as readonly string[]).includes(type)) throw new ApiError('invalid', `type must be one of ${SIGNAL_TYPES.join(', ')}.`)
     if (body.payload === null || typeof body.payload !== 'object' || Array.isArray(body.payload)) throw new ApiError('invalid', 'payload must be an object.')
     const payload = JSON.stringify(body.payload)
-    if (new TextEncoder().encode(payload).length > MAX_SIGNAL_BYTES) throw new ApiError('invalid', 'This signal is too large.', 'too_large', 413)
+    const bytes = new TextEncoder().encode(payload).length
+    if (bytes > MAX_SIGNAL_BYTES) throw new ApiError('invalid', 'This signal is too large.', 'too_large', 413)
 
+    if (body.to !== undefined && body.to !== null && typeof body.to !== 'string' && typeof body.to !== 'number') throw new ApiError('invalid', 'to must be a participant id.')
     const to = body.to === undefined || body.to === null ? null : String(body.to).slice(0, 64)
 
-    const [pending, target, inserted] = await db.batch([
+    // What I have waiting, in this meeting: how many, and how much.
+    const MINE = `FROM signals s WHERE s.to_id IN (SELECT id FROM participants WHERE meeting_code = ?1) AND s.from_id = ?2`
+
+    const [, pending, target, inserted] = await db.batch([
+        // Nobody read these within a minute: their tab is gone, and a late offer or candidate is of no use.
         db.prepare(`
-            SELECT COUNT(*) AS n FROM signals
-            WHERE to_id IN (SELECT id FROM participants WHERE meeting_code = ?1) AND from_id = ?2
-        `).bind(code, me.id),
+            DELETE FROM signals
+            WHERE to_id IN (SELECT id FROM participants WHERE meeting_code = ?1) AND created_at < ?2
+        `).bind(code, now - SIGNAL_TTL_MS),
+        db.prepare(`SELECT COUNT(*) AS n, COALESCE(SUM(LENGTH(CAST(s.payload AS BLOB))), 0) AS bytes ${MINE}`).bind(code, me.id),
         db.prepare('SELECT COUNT(*) AS n FROM participants WHERE id = ?1 AND meeting_code = ?2 AND seat IS NOT NULL').bind(to, code),
         // To everyone in the call who has a window for it (not someone on hold), or to `to` alone,
-        // and only while fewer than MAX_PENDING_SIGNALS of mine wait unread.
+        // and only while what I have waiting unread stays under the limits (checked in the same
+        // statement, so requests sent together cannot all slip under them).
         db.prepare(`
             INSERT INTO signals (meeting_code, to_id, from_id, type, payload, created_at)
             SELECT ?1, p.id, ?2, ?3, ?4, ?5 FROM participants p
             WHERE p.meeting_code = ?1 AND p.id != ?2 AND p.status IN ('ringing', 'joined') AND (?6 IS NULL OR p.id = ?6)
-              AND (SELECT COUNT(*) FROM signals s WHERE s.to_id IN (SELECT id FROM participants WHERE meeting_code = ?1) AND s.from_id = ?2) < ${MAX_PENDING_SIGNALS}
+              AND (SELECT COUNT(*) ${MINE}) < ${MAX_PENDING_SIGNALS}
+              AND (SELECT COALESCE(SUM(LENGTH(CAST(s.payload AS BLOB))), 0) ${MINE}) + ?7 <= ${MAX_PENDING_BYTES}
             ORDER BY p.seat
             RETURNING id
-        `).bind(code, me.id, type, payload, now, to),
+        `).bind(code, me.id, type, payload, now, to, bytes),
     ])
 
-    if ((pending?.results[0] as { n: number }).n >= MAX_PENDING_SIGNALS) {
+    const waiting = pending?.results[0] as { n: number, bytes: number }
+    if (waiting.n >= MAX_PENDING_SIGNALS || waiting.bytes + bytes > MAX_PENDING_BYTES) {
         throw new ApiError('rate_limited', 'Too many signals are waiting to be read.', 'too_many')
     }
     if (to !== null && (to === me.id || (target?.results[0] as { n: number }).n === 0)) {

@@ -13,6 +13,10 @@ The Worker's JSON API, everything under `/api/*`. [ARCHITECTURE.md](ARCHITECTURE
 
 **Bodies** are JSON (`Content-Type: application/json`) both ways, except the `.ics` file and the `leave` beacon (form data).
 
+**Request bodies** are small: at most 16 KB (33 KB for a signal), `413` with `reason: "too_large"` past that, whether or not the request says how long it is.
+
+**Text people type** (names, titles) is stored cleaned: control characters become spaces, characters that show nothing but change how text reads (direction overrides and isolates, zero-width spaces, soft hyphens, blank fillers, tag characters) are removed, whitespace is collapsed and trimmed, and the result is composed (NFC). Joiners that scripts and emoji need are kept. A text that would show nothing counts as empty. Lengths are checked after cleaning. Names are still whatever people call themselves: who the host is comes from `role`, never from a name.
+
 **Times** are ISO 8601 strings in UTC (`2026-12-01T15:00:00.000Z`).
 
 **Meeting codes** are ten characters from `23456789abcdefghjkmnpqrstuvwxyz`. The API always returns the plain form (`abcdefghjk`); show it as `abc-defg-hjk`. Every route takes the code with or without dashes, in any case.
@@ -116,7 +120,8 @@ A calendar file (`text/calendar`, `attachment; filename="meeting-<code>.ics"`) f
 { "name": "Mihai", "passcode": "tulip-42", "hostKey": null }
 ```
 
-- `name`: 1 to 40 characters after trimming.
+- `name`: 1 to 40 characters after cleaning (see [Conventions](#conventions)).
+- A `passcode` longer than 64 characters or a `hostKey` longer than 128 is `422 invalid`: it cannot be right, and is not counted as a wrong guess.
 - `passcode`: for a private meeting. Not needed with a valid `hostKey`.
 - `hostKey`: makes this participant the host. A wrong `hostKey` is `403 forbidden` (it is never silently ignored).
 
@@ -269,7 +274,7 @@ All under `/api/meetings/:code/holler`, with the token.
 | `GET` | `/ice` | | `{ iceServers, iceTransportPolicy }`, never cached |
 | `POST` | `/start` | | `422 not_allowed`: nobody is rung in a meeting |
 
-Signals: `type` is one of `offer`, `answer`, `ice`, `reset`, `state`; `payload` an object up to 64 KB (`413 too_large`); at most 500 of my signals unread at once (`429 too_many`). `to` must be someone in the call (`422 not_allowed`). A signal to everyone goes to every participant who is `ringing` or `joined` (not `on_hold`: they connect afresh when they resume). Signalling after the meeting ended is `410 ended`; signalling before I answered is `422 not_allowed`.
+Signals: `type` is one of `offer`, `answer`, `ice`, `reset`, `state`; `payload` an object up to 32 KB (`413 too_large`); at most 200 of my signals, and 128 KB of them, unread at once in a meeting (`429 too_many`). A signal nobody read within a minute is deleted (by the next signal sent in that meeting, and by a sweep every 15 minutes). `to` must be someone in the call (`422 not_allowed`). A signal to everyone goes to every participant who is `ringing` or `joined` (not `on_hold`: they connect afresh when they resume). Signalling after the meeting ended is `410 ended`; signalling before I answered is `422 not_allowed`.
 
 ### Polling
 
@@ -357,7 +362,7 @@ At 3 s polls once connected (1 s for the first ~15 s), for each meeting length:
 | 4 people, 60 min | ~4,950 | ~1,570 | **~20** |
 | 2 people, 60 min | ~2,450 | ~670 | **~40** |
 
-Roughly **80 participant-hours a day** at 3 s polls (about 140 at 5 s); at Holler's default 1 s it would be under 28. The D1 write limit would allow about 330 participant-hours and reads about 270, so neither binds. The daily cron costs a few hundred rows at most.
+Roughly **80 participant-hours a day** at 3 s polls (about 140 at 5 s); at Holler's default 1 s it would be under 28. The D1 write limit would allow about 330 participant-hours and reads about 270, so neither binds. The daily cron costs a few hundred rows at most; the sweep of unread signals every 15 minutes reads the few rows of the signals table and usually writes nothing.
 
 A waiting guest costs 720–1,200 requests an hour at 3–5 s polls, so keep the waiting room poll at 5 s.
 
