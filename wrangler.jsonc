@@ -5,6 +5,11 @@
   "compatibility_date": "2026-11-01",
   "observability": { "enabled": true },
 
+  // One origin: the custom domain, workers.dev off (docs/security.md).
+  "routes": [{ "pattern": "meet.xlite.dev", "custom_domain": true }],
+  "workers_dev": false,
+  "preview_urls": false,
+
   // The Svelte app (web/dist) is served as static assets: free, not counted as
   // Worker requests. Unknown paths fall back to index.html (client-side routes);
   // /api/* always reaches the Worker first.
@@ -15,13 +20,13 @@
     "run_worker_first": ["/api/*"]
   },
 
-  // `wrangler d1 create meet-holler` prints the real database_id; the local
-  // database (wrangler dev, tests) does not need one.
+  // The production database (`wrangler d1 create meet-holler`, 2026-11-24);
+  // the local one (wrangler dev, tests) ignores the id.
   "d1_databases": [
     {
       "binding": "DB",
       "database_name": "meet-holler",
-      "database_id": "00000000-0000-0000-0000-000000000000",
+      "database_id": "f71958c0-6caa-4694-90a8-b59996d8bce0",
       "migrations_dir": "migrations"
     }
   ],
