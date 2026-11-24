@@ -21,7 +21,7 @@
   },
   "devDependencies": {
     "@cloudflare/vitest-plugin": "^1.9.1",
-    "@packstub/holler": "^1.0.0",
+    "@packstub/holler": "https://github.com/packstub/holler-js/archive/164616e7de10694aee455a9d5f3ebab090467615.tar.gz",
     "typescript": "~6.0.3",
     "vitest": "^5.1.1",
     "wrangler": "^4.167.0"

@@ -14,7 +14,7 @@
     "dependencies": {
         "@fontsource-variable/bricolage-grotesque": "^5.3.0",
         "@fontsource/atkinson-hyperlegible": "^5.3.0",
-        "@packstub/holler": "^1.0.0"
+        "@packstub/holler": "https://github.com/packstub/holler-js/archive/164616e7de10694aee455a9d5f3ebab090467615.tar.gz"
     },
     "devDependencies": {
         "@sveltejs/vite-plugin-svelte": "^7.3.2",
