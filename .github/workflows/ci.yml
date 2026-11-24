@@ -51,3 +51,18 @@ jobs:
       - run: npm --prefix web run check
       - run: npm --prefix web test
       - run: npm run build
+
+  # The one check the ruleset on main requires: add every new job to `needs`.
+  passed:
+    name: Tests passed
+    if: always()
+    needs: [worker, web]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Fail unless every job succeeded
+        env:
+          RESULTS: ${{ join(needs.*.result, ' ') }}
+        run: |
+          for result in $RESULTS; do
+            [ "$result" = success ] || { echo "A job ended with: $result"; exit 1; }
+          done
