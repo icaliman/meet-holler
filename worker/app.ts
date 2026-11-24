@@ -1,6 +1,7 @@
 import { Hono } from 'hono'
 import { ApiError } from './lib/errors'
 import { rateLimit } from './lib/ratelimit'
+import { holler } from './holler/routes'
 import { meetings } from './meetings/routes'
 
 export type AppEnv = { Bindings: Env }
@@ -11,6 +12,7 @@ app.use('/api/*', rateLimit('api'))
 
 app.get('/api/health', (c) => c.json({ ok: true }))
 app.route('/api/meetings', meetings)
+app.route('/api/meetings', holler)
 
 app.all('/api/*', () => {
     throw new ApiError('not_found', 'There is nothing here.')
