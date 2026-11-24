@@ -3,12 +3,12 @@ import { newCode } from '../lib/codes'
 import { hashPasscode, randomToken, safeEqual, sha256Hex, signToken, verifyPasscode } from '../lib/crypto'
 import { ApiError, invalid } from '../lib/errors'
 import { clientIp, clientKey, durableRateLimit, hitDurable, rateLimit } from '../lib/ratelimit'
-import { PASSCODE_MAX_FAILURES, PASSCODE_WINDOW_MS, WAITING_HEARTBEAT_MS, WAITING_STALE_MS } from '../lib/timing'
+import { CAPACITY, MAX_RECORDS, MAX_WAITING, PASSCODE_MAX_FAILURES, PASSCODE_WINDOW_MS, PRUNE_AFTER_MS, WAITING_HEARTBEAT_MS, WAITING_STALE_MS } from '../lib/timing'
 import { jsonBody, optionalBoolean, optionalSecret, optionalText, requiredText } from '../lib/validate'
 import { codeFrom, findMeeting, requireHost, requireParticipant, routeCode } from './auth'
 import { meetingIcs } from './ics'
 import {
-    expireStatement, liveCountStatement, meetingStatus, NEXT_SEAT_SQL, publicMeeting, publicParticipant, ROOM_SQL, waitingEntry,
+    expireStatement, LIVE_SQL, liveCountStatement, meetingStatus, NEXT_SEAT_SQL, publicMeeting, publicParticipant, ROOM_SQL, waitingEntry,
     type MeetingRow, type ParticipantRow,
 } from './model'
 
@@ -127,6 +127,25 @@ meetings.get('/:code', async (c) => {
 
 // ---- join --------------------------------------------------------------------
 
+/** Why the join's INSERT took nobody in: the meeting is full, or one of the flood limits. */
+async function whyNot(db: D1Database, code: string, waits: boolean, now: number): Promise<ApiError> {
+    const counts = await db.prepare(`
+        SELECT
+            COALESCE(SUM(status IN ${LIVE_SQL}), 0) AS live,
+            COALESCE(SUM(status = 'waiting' AND seen_at >= ?2 - ${WAITING_STALE_MS}), 0) AS waiting
+        FROM participants WHERE meeting_code = ?1
+    `).bind(code, now).first<{ live: number, waiting: number }>()
+
+    if ((counts?.live ?? 0) >= CAPACITY) return full()
+
+    const error = waits && (counts?.waiting ?? 0) >= MAX_WAITING
+        ? new ApiError('rate_limited', 'Too many people are waiting to get into this meeting. Try again in a minute.')
+        : new ApiError('rate_limited', 'Too many people tried to get into this meeting. Try again in a few minutes.')
+    error.retryAfter = 60
+
+    return error
+}
+
 /**
  * Wrong passcodes are counted on the meeting itself, so the cap holds across
  * every Worker instance: PASSCODE_MAX_FAILURES per PASSCODE_WINDOW_MS.
@@ -193,7 +212,16 @@ meetings.post('/:code/join', rateLimit('join'), durableRateLimit('join'), async 
     const id = randomToken(9)
     const statements = [
         expireStatement(db, code, now),
-        // Admitted people take the next seat; everyone needs room in the meeting (one statement, so two joins cannot both take the last place).
+        // People who left, were denied or removed, or stopped waiting, ten minutes ago: forgotten, so
+        // a meeting's records (which every poll reads) do not grow with every join there ever was.
+        db.prepare(`
+            DELETE FROM participants
+            WHERE meeting_code = ?1 AND status NOT IN ${LIVE_SQL}
+              AND COALESCE(CASE WHEN status = 'waiting' THEN seen_at ELSE left_at END, seen_at, created_at) < ?2
+        `).bind(code, now - PRUNE_AFTER_MS),
+        // Admitted people take the next seat; everyone needs room in the meeting (one statement, so two
+        // joins cannot both take the last place). The same statement holds the flood limits: guests
+        // still asking in the waiting room, and records in the meeting (never the host's way in).
         db.prepare(`
             INSERT INTO participants (id, meeting_code, name, role, status, seat, seen_at, created_at, admitted_at)
             SELECT ?2, ?1, ?3, ?4, ?5,
@@ -202,12 +230,14 @@ meetings.post('/:code/join', rateLimit('join'), durableRateLimit('join'), async 
                 ?6,
                 CASE WHEN ?5 = 'waiting' THEN NULL ELSE ?6 END
             WHERE ${ROOM_SQL}
+              AND (?5 != 'waiting' OR (SELECT COUNT(*) FROM participants WHERE meeting_code = ?1 AND status = 'waiting' AND seen_at >= ?6 - ${WAITING_STALE_MS}) < ${MAX_WAITING})
+              AND (?4 = 'host' OR (SELECT COUNT(*) FROM participants WHERE meeting_code = ?1) < ${MAX_RECORDS})
         `).bind(code, id, name, isHost ? 'host' : 'guest', waits ? 'waiting' : 'ringing', now),
     ]
     if (isHost) statements.push(db.prepare('UPDATE meetings SET opened_at = ?2 WHERE code = ?1 AND opened_at IS NULL').bind(code, now))
 
     const results = await db.batch(statements)
-    if (results[1]?.meta.changes !== 1) throw full()
+    if (results[2]?.meta.changes !== 1) throw await whyNot(db, code, waits, now)
 
     if (isHost) meeting.opened_at ??= now
     const participant = await db.prepare('SELECT * FROM participants WHERE id = ?1').bind(id).first<ParticipantRow>()
